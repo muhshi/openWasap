@@ -523,20 +523,58 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     try {
       // Ensure participant IDs are in correct format
       const participantIds = participants.map(p => (p.includes('@') ? p : `${p}@c.us`));
-      
-      // autoSendInviteV4: false prevents the internal WhatsApp Web update crash:
-      // "TypeError: this.findImpl is not a function" which triggers when trying to automatically
-      // send invite links to contacts who restricted group additions in their privacy settings (403).
-      const result = await this.client!.createGroup(name, participantIds, { autoSendInviteV4: false });
 
-      if (!result || !(result as unknown as GroupCreateResult).gid) {
-        throw new Error('Failed to create group: Invalid response from WhatsApp');
+      // Bypass the broken whatsapp-web.js client.createGroup entirely.
+      // The library's implementation has multiple crash points due to WhatsApp Web internal updates:
+      // 1. queryWidExists per-participant loop (slow N+1 queries)
+      // 2. WAWebApiContact.getPhoneNumber crash on 'lid' server participants
+      // 3. Chat.find -> this.findImpl crash when autoSendInviteV4 triggers for 403 participants
+      //
+      // Instead, we call WAWebGroupCreateJob.createGroup directly via pupPage.evaluate.
+      const result = await (this.client as unknown as { pupPage: { evaluate: (fn: (title: string, pIds: string[]) => Promise<unknown>, title: string, pIds: string[]) => Promise<unknown> } }).pupPage.evaluate(
+        async (title: string, pIds: string[]) => {
+          try {
+            // Build participant WIDs
+            const participantWids = pIds.map(p => ({
+              phoneNumber: (window as unknown as { require: (m: string) => { createWid: (id: string) => unknown } }).require('WAWebWidFactory').createWid(p),
+            }));
+
+            // Call the internal group creation API directly
+            const createResult = await (window as unknown as { require: (m: string) => { createGroup: (opts: Record<string, unknown>, wids: unknown[]) => Promise<{ wid: { _serialized: string }; subject: string }> } }).require('WAWebGroupCreateJob').createGroup(
+              {
+                title: title,
+                memberAddMode: false,
+                membershipApprovalMode: false,
+                announce: false,
+                restrict: false,
+                ephemeralDuration: 0,
+              },
+              participantWids,
+            );
+
+            return {
+              success: true,
+              gid: createResult.wid._serialized,
+              subject: createResult.subject || title,
+            };
+          } catch (err) {
+            return {
+              success: false,
+              error: err instanceof Error ? err.message : String(err),
+            };
+          }
+        },
+        name,
+        participantIds,
+      ) as { success: boolean; gid?: string; subject?: string; error?: string };
+
+      if (!result || !result.success || !result.gid) {
+        throw new Error(result?.error || 'Failed to create group: Invalid response from WhatsApp');
       }
 
-      const groupId = String((result as unknown as GroupCreateResult).gid._serialized);
       return {
-        id: groupId,
-        name: name,
+        id: result.gid,
+        name: result.subject || name,
         participantsCount: participants.length,
       };
     } catch (error) {
