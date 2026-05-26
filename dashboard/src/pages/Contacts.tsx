@@ -129,7 +129,7 @@ export function Contacts() {
 
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterSource, setFilterSource] = useState<'all' | 'whatsapp' | 'imported'>('all');
+  const [activeTab, setActiveTab] = useState<'imported' | 'whatsapp'>('imported');
 
   // Status Load/Loading
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
@@ -152,7 +152,7 @@ export function Contacts() {
   // Reset page to 1 when filters or query change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterSource]);
+  }, [searchQuery, activeTab]);
 
   // Set default session if available
   useEffect(() => {
@@ -339,28 +339,15 @@ export function Contacts() {
     fileInputRef.current?.click();
   };
 
-  // Merge dan deduplikasi kontak
-  const allContactsMap = new Map<string, DisplayContact>();
-  whatsappContacts.forEach(c => allContactsMap.set(c.phone, c));
-  importedContacts.forEach(c => {
-    if (!allContactsMap.has(c.phone)) {
-      allContactsMap.set(c.phone, c);
-    }
-  });
+  // Pilih sumber kontak berdasarkan tab aktif
+  const sourceContacts = activeTab === 'imported' ? importedContacts : whatsappContacts;
 
-  const mergedContacts = Array.from(allContactsMap.values());
-
-  // Filter kontak berdasarkan pencarian dan sumber
-  const filteredContacts = mergedContacts.filter(c => {
-    const matchesSearch =
+  // Filter kontak berdasarkan pencarian
+  const filteredContacts = sourceContacts.filter(c => {
+    return (
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone.includes(searchQuery);
-    
-    const matchesSource =
-      filterSource === 'all' ||
-      c.source === filterSource;
-
-    return matchesSearch && matchesSource;
+      c.phone.includes(searchQuery)
+    );
   });
 
   // Kalkulasi pagination
@@ -640,12 +627,34 @@ export function Contacts() {
         {/* Panel Kanan: Daftar Kontak */}
         <div className="right-panel">
           <div className="card table-card">
+            {/* Sliding Tabs */}
+            <div className="tabs-container">
+              <button
+                className={`tab-btn ${activeTab === 'imported' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('imported');
+                  setSelectedContacts([]);
+                }}
+              >
+                <FileSpreadsheet size={16} />
+                Database Impor ({importedContacts.length})
+              </button>
+              <button
+                className={`tab-btn ${activeTab === 'whatsapp' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveTab('whatsapp');
+                  setSelectedContacts([]);
+                }}
+              >
+                <Users size={16} />
+                Kontak WhatsApp ({whatsappContacts.length})
+              </button>
+            </div>
+
             <div className="table-header-row">
               <h2>
-                {t('contacts.contactsCount', {
-                  count: filteredContacts.length,
-                  selected: selectedContacts.length
-                })}
+                {activeTab === 'imported' ? 'Kontak Database Impor' : 'Kontak Akun WhatsApp'}
+                <span className="count-badge">({filteredContacts.length})</span>
               </h2>
 
               <div className="filters">
@@ -657,18 +666,6 @@ export function Contacts() {
                     onChange={e => setSearchQuery(e.target.value)}
                     placeholder={t('contacts.searchPlaceholder')}
                   />
-                </div>
-
-                <div className="source-filter">
-                  <Filter size={16} />
-                  <select
-                    value={filterSource}
-                    onChange={e => setFilterSource(e.target.value as 'all' | 'whatsapp' | 'imported')}
-                  >
-                    <option value="all">All Sources</option>
-                    <option value="whatsapp">WhatsApp Contacts</option>
-                    <option value="imported">Imported</option>
-                  </select>
                 </div>
               </div>
             </div>
