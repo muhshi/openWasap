@@ -61,7 +61,8 @@
     "messageTester": "Message Tester",
     "infrastructure": "Infrastructure",
     "plugins": "Plugins",
-    "logs": "Logs"
+    "logs": "Logs",
+    "contacts": "Contacts"
   },
   "errorBoundary": {
     "title": "Something went wrong",
@@ -508,5 +509,41 @@
       "savedDesc": "Server restart required to apply changes.",
       "saveFailed": "Save Failed"
     }
+  },
+  "contacts": {
+    "title": "Contacts Manager",
+    "subtitle": "View your session contacts, import external lists, and create groups",
+    "selectSession": "Select WhatsApp Session",
+    "noReadySessions": "No ready sessions connected",
+    "importTitle": "Import Contacts",
+    "importDesc": "Upload a CSV or Excel file (.xlsx, .xls) containing your contact list. Supported columns: Name and Phone.",
+    "contactsCount": "Contacts ({{count}} total, {{selected}} selected)",
+    "searchPlaceholder": "Search contacts by name or phone number...",
+    "table": {
+      "name": "Name",
+      "phone": "Phone Number",
+      "source": "Source",
+      "status": "WhatsApp Status",
+      "actions": "Actions"
+    },
+    "sources": {
+      "whatsapp": "WhatsApp Contact",
+      "imported": "Imported List"
+    },
+    "createGroupBtn": "Create WhatsApp Group",
+    "createGroupTitle": "Create New Group",
+    "groupNameLabel": "Group Name",
+    "groupNamePlaceholder": "e.g., Marketing Team, Resellers",
+    "selectedCount": "{{count}} contacts selected for this group.",
+    "creating": "Creating group...",
+    "create": "Create Group",
+    "toasts": {
+      "importSuccess": "Successfully imported {{count}} contacts!",
+      "importFailed": "Failed to parse import file: {{error}}",
+      "createSuccess": "WhatsApp group '{{name}}' created successfully!",
+      "createFailed": "Failed to create group: {{error}}",
+      "loadFailed": "Failed to load session contacts: {{error}}"
+    },
+    "noContacts": "No contacts found. Select an active session or import a CSV/Excel file to populate the list."
   }
 }

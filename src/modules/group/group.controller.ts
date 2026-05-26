@@ -1,22 +1,40 @@
 import { Controller, Get, Post, Put, Delete, Param, Body, HttpCode, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, IsArray, ArrayMinSize } from 'class-validator';
 import { SessionService } from '../session/session.service';
 
 // DTOs
 class CreateGroupDto {
+  @ApiProperty({ description: 'Nama grup baru', example: 'Grup Baru' })
+  @IsString()
+  @IsNotEmpty()
   name: string;
+
+  @ApiProperty({ description: 'Daftar nomor telepon peserta', type: [String], example: ['628123456789'] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
   participants: string[];
 }
 
 class ParticipantsDto {
+  @ApiProperty({ description: 'Daftar nomor telepon peserta', type: [String], example: ['628123456789'] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
   participants: string[];
 }
 
 class GroupSubjectDto {
+  @ApiProperty({ description: 'Nama/subjek baru grup', example: 'Nama Baru' })
+  @IsString()
+  @IsNotEmpty()
   subject: string;
 }
 
 class GroupDescriptionDto {
+  @ApiProperty({ description: 'Deskripsi baru grup', example: 'Deskripsi Baru' })
+  @IsString()
   description: string;
 }
 

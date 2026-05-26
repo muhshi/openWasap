@@ -18,6 +18,15 @@ export interface Session {
   updatedAt: string;
 }
 
+export interface Contact {
+  id: string;
+  name?: string;
+  pushName?: string;
+  number: string;
+  isMyContact: boolean;
+  isBlocked: boolean;
+}
+
 export interface SessionStats {
   total: number;
   active: number;
@@ -189,6 +198,12 @@ export const sessionApi = {
   getQR: (id: string) => request<{ qrCode: string; status: string }>(`/sessions/${id}/qr`),
   getStats: () => request<SessionStats>('/sessions/stats/overview'),
   getGroups: (id: string) => request<{ id: string; name: string }[]>(`/sessions/${id}/groups`),
+  getContacts: (id: string) => request<Contact[]>(`/sessions/${id}/contacts`),
+  createGroup: (id: string, name: string, participants: string[]) =>
+    request<{ id: string; name: string; participantsCount: number }>(`/sessions/${id}/groups`, {
+      method: 'POST',
+      body: JSON.stringify({ name, participants }),
+    }),
 };
 
 // =============================================================================
