@@ -611,7 +611,15 @@ export function Contacts() {
               className="create-group-btn"
               onClick={() => setIsCreateGroupOpen(true)}
               disabled={!canWrite || selectedContacts.length === 0 || !selectedSession}
-              title={selectedContacts.length === 0 ? 'Select contacts in table first' : undefined}
+              title={
+                !selectedSession
+                  ? 'Koneksikan sesi WhatsApp berstatus READY terlebih dahulu'
+                  : !canWrite
+                  ? 'Anda tidak memiliki izin (role) untuk menulis/membuat grup'
+                  : selectedContacts.length === 0
+                  ? 'Pilih kontak di tabel terlebih dahulu'
+                  : undefined
+              }
             >
               <Plus size={18} />
               {t('contacts.createGroupBtn')}
