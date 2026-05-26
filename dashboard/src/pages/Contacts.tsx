@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
-import { sessionApi } from '../services/api';
+import { sessionApi, importedContactApi } from '../services/api';
 import type { Contact as ApiContact } from '../services/api';
 import { useSessionsQuery } from '../hooks/queries';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -105,20 +105,27 @@ export function Contacts() {
   // Kontak
   const [whatsappContacts, setWhatsappContacts] = useState<DisplayContact[]>([]);
   
-  // Load initial contacts from localStorage or use DEFAULT_CONTACTS
-  const [importedContacts, setImportedContacts] = useState<DisplayContact[]>(() => {
-    const saved = localStorage.getItem('openwa_custom_contacts');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error('Failed to parse saved contacts', e);
-      }
+  const [importedContacts, setImportedContacts] = useState<DisplayContact[]>([]);
+
+  const loadImportedContacts = useCallback(async () => {
+    try {
+      const data = await importedContactApi.list();
+      const mapped: DisplayContact[] = data.map(c => ({
+        id: c.id,
+        name: c.name,
+        phone: c.phone,
+        source: 'imported'
+      }));
+      setImportedContacts(mapped);
+    } catch (err) {
+      console.error('Failed to load imported contacts from database:', err);
+      toast.error('Gagal mengambil data kontak dari database.');
     }
-    // If not saved before, initialize with default contacts and save them
-    localStorage.setItem('openwa_custom_contacts', JSON.stringify(DEFAULT_CONTACTS));
-    return DEFAULT_CONTACTS;
-  });
+  }, [toast]);
+
+  useEffect(() => {
+    void loadImportedContacts();
+  }, [loadImportedContacts]);
 
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -146,15 +153,6 @@ export function Contacts() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, filterSource]);
-
-  // Helper to save contacts to state and database (localStorage)
-  const saveCustomContacts = (updatedOrUpdater: DisplayContact[] | ((prev: DisplayContact[]) => DisplayContact[])) => {
-    setImportedContacts(prev => {
-      const next = typeof updatedOrUpdater === 'function' ? updatedOrUpdater(prev) : updatedOrUpdater;
-      localStorage.setItem('openwa_custom_contacts', JSON.stringify(next));
-      return next;
-    });
-  };
 
   // Set default session if available
   useEffect(() => {
@@ -241,6 +239,28 @@ export function Contacts() {
     return parsed;
   };
 
+  const importContactsToDatabase = async (parsed: DisplayContact[]) => {
+    setIsLoadingContacts(true);
+    let successCount = 0;
+    try {
+      for (const contact of parsed) {
+        try {
+          await importedContactApi.create(contact.name, contact.phone);
+          successCount++;
+        } catch (e) {
+          console.error(`Failed to import contact: ${contact.name}`, e);
+        }
+      }
+      toast.success(`Berhasil mengimpor ${successCount} kontak ke database.`);
+      await loadImportedContacts();
+    } catch (err) {
+      console.error(err);
+      toast.error('Gagal menyimpan kontak impor ke database.');
+    } finally {
+      setIsLoadingContacts(false);
+    }
+  };
+
   // Menangani file CSV/Excel
   const processFile = (file: File) => {
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
@@ -249,15 +269,14 @@ export function Contacts() {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
-        complete: (results) => {
+        complete: async (results) => {
           if (results.errors.length > 0) {
             toast.error(t('contacts.toasts.importFailed', { error: results.errors[0].message }));
             return;
           }
           const parsed = parseRows(results.data as Record<string, unknown>[]);
           if (parsed.length > 0) {
-            saveCustomContacts(prev => [...prev, ...parsed]);
-            toast.success(t('contacts.toasts.importSuccess', { count: parsed.length }));
+            await importContactsToDatabase(parsed);
           } else {
             toast.error(t('contacts.toasts.importFailed', { error: 'No contacts found or headers mismatched.' }));
           }
@@ -268,7 +287,7 @@ export function Contacts() {
       });
     } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         try {
           const data = new Uint8Array(event.target?.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: 'array' });
@@ -278,8 +297,7 @@ export function Contacts() {
           const parsed = parseRows(json);
 
           if (parsed.length > 0) {
-            saveCustomContacts(prev => [...prev, ...parsed]);
-            toast.success(t('contacts.toasts.importSuccess', { count: parsed.length }));
+            await importContactsToDatabase(parsed);
           } else {
             toast.error(t('contacts.toasts.importFailed', { error: 'No contacts found or headers mismatched.' }));
           }
@@ -390,24 +408,36 @@ export function Contacts() {
     }
   };
 
-  const clearImported = () => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus semua kontak?')) {
-      saveCustomContacts([]);
-      setSelectedContacts([]);
-      toast.info('Semua kontak berhasil dihapus.');
+  const clearImported = async () => {
+    if (window.confirm('Apakah Anda yakin ingin menghapus semua kontak secara permanen dari database?')) {
+      try {
+        await importedContactApi.deleteAll();
+        setImportedContacts([]);
+        setSelectedContacts([]);
+        toast.info('Semua kontak berhasil dihapus dari database.');
+      } catch (err) {
+        console.error(err);
+        toast.error('Gagal menghapus semua kontak dari database.');
+      }
     }
   };
 
-  const deleteContact = (phone: string, e: React.MouseEvent) => {
+  const deleteContact = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm('Hapus kontak ini?')) {
-      saveCustomContacts(prev => prev.filter(c => c.phone !== phone));
-      setSelectedContacts(prev => prev.filter(p => p !== phone));
-      toast.info('Kontak berhasil dihapus.');
+    if (window.confirm('Hapus kontak ini secara permanen dari database?')) {
+      try {
+        await importedContactApi.delete(id);
+        setImportedContacts(prev => prev.filter(c => c.id !== id));
+        setSelectedContacts(prev => prev.filter(p => p !== id));
+        toast.info('Kontak berhasil dihapus dari database.');
+      } catch (err) {
+        console.error(err);
+        toast.error('Gagal menghapus kontak dari database.');
+      }
     }
   };
 
-  const handleAddContactSubmit = (e: React.FormEvent) => {
+  const handleAddContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newContactName.trim() || !newContactPhone.trim()) return;
 
@@ -417,24 +447,29 @@ export function Contacts() {
       return;
     }
 
-    if (importedContacts.some(c => c.phone === phone)) {
-      toast.error('Kontak dengan nomor HP ini sudah ada.');
-      return;
+    try {
+      const created = await importedContactApi.create(newContactName.trim(), phone);
+      
+      const newContact: DisplayContact = {
+        id: created.id,
+        name: created.name,
+        phone: created.phone,
+        source: 'imported'
+      };
+
+      setImportedContacts(prev => {
+        const filtered = prev.filter(c => c.phone !== phone);
+        return [...filtered, newContact];
+      });
+      toast.success('Kontak berhasil disimpan ke database.');
+
+      setNewContactName('');
+      setNewContactPhone('');
+      setIsAddContactOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error('Gagal menyimpan kontak ke database.');
     }
-
-    const newContact: DisplayContact = {
-      id: `imported_${phone}_${Date.now()}`,
-      name: newContactName.trim(),
-      phone,
-      source: 'imported'
-    };
-
-    saveCustomContacts(prev => [...prev, newContact]);
-    toast.success('Kontak berhasil ditambahkan.');
-
-    setNewContactName('');
-    setNewContactPhone('');
-    setIsAddContactOpen(false);
   };
 
   const downloadCsvTemplate = () => {
@@ -686,7 +721,7 @@ export function Contacts() {
                               {c.source === 'imported' && (
                                 <button
                                   className="delete-row-btn"
-                                  onClick={(e) => deleteContact(c.phone, e)}
+                                  onClick={(e) => deleteContact(c.id, e)}
                                   title="Hapus Kontak"
                                 >
                                   <X size={14} />

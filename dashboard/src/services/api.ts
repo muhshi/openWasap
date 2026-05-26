@@ -27,6 +27,14 @@ export interface Contact {
   isBlocked: boolean;
 }
 
+export interface ImportedContact {
+  id: string;
+  name: string;
+  phone: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface SessionStats {
   total: number;
   active: number;
@@ -204,6 +212,17 @@ export const sessionApi = {
       method: 'POST',
       body: JSON.stringify({ name, participants }),
     }),
+};
+
+export const importedContactApi = {
+  list: () => request<ImportedContact[]>('/contacts/imported'),
+  create: (name: string, phone: string) =>
+    request<ImportedContact>('/contacts/imported', {
+      method: 'POST',
+      body: JSON.stringify({ name, phone }),
+    }),
+  delete: (id: string) => request<void>(`/contacts/imported/${id}`, { method: 'DELETE' }),
+  deleteAll: () => request<void>('/contacts/imported', { method: 'DELETE' }),
 };
 
 // =============================================================================
