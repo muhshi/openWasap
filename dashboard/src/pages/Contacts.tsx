@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Upload,
@@ -69,7 +69,7 @@ export function Contacts() {
   }, [sessions, selectedSession]);
 
   // Load WhatsApp contacts when session changes
-  const loadWhatsappContacts = async (sessionId: string) => {
+  const loadWhatsappContacts = useCallback(async (sessionId: string) => {
     if (!sessionId) {
       setWhatsappContacts([]);
       return;
@@ -94,7 +94,7 @@ export function Contacts() {
     } finally {
       setIsLoadingContacts(false);
     }
-  };
+  }, [t, toast]);
 
   useEffect(() => {
     if (selectedSession) {
@@ -102,7 +102,7 @@ export function Contacts() {
     } else {
       setWhatsappContacts([]);
     }
-  }, [selectedSession]);
+  }, [selectedSession, loadWhatsappContacts]);
 
   // Pembersihan nomor telepon (e.g. 08xx -> 628xx)
   const cleanPhoneNumber = (num: string): string => {
@@ -117,7 +117,7 @@ export function Contacts() {
   };
 
   // Mencari nilai kolom berdasarkan variasi nama header
-  const findColumnValue = (row: any, keys: string[]): string => {
+  const findColumnValue = (row: Record<string, unknown>, keys: string[]): string => {
     const rowKeys = Object.keys(row);
     for (const k of keys) {
       const foundKey = rowKeys.find(rk => rk.toLowerCase().trim() === k.toLowerCase().trim());
@@ -127,7 +127,7 @@ export function Contacts() {
   };
 
   // Parser data kontak dari baris hasil import
-  const parseRows = (rows: any[]): DisplayContact[] => {
+  const parseRows = (rows: Record<string, unknown>[]): DisplayContact[] => {
     const parsed: DisplayContact[] = [];
     rows.forEach((row, index) => {
       const name = findColumnValue(row, ['name', 'nama', 'full name', 'nama lengkap', 'display name', 'petugas']);
@@ -159,7 +159,7 @@ export function Contacts() {
             toast.error(t('contacts.toasts.importFailed', { error: results.errors[0].message }));
             return;
           }
-          const parsed = parseRows(results.data);
+          const parsed = parseRows(results.data as Record<string, unknown>[]);
           if (parsed.length > 0) {
             setImportedContacts(prev => [...prev, ...parsed]);
             toast.success(t('contacts.toasts.importSuccess', { count: parsed.length }));
@@ -179,7 +179,7 @@ export function Contacts() {
           const workbook = XLSX.read(data, { type: 'array' });
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
-          const json = XLSX.utils.sheet_to_json(worksheet);
+          const json = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
           const parsed = parseRows(json);
 
           if (parsed.length > 0) {
@@ -426,7 +426,7 @@ export function Contacts() {
                   <Filter size={16} />
                   <select
                     value={filterSource}
-                    onChange={e => setFilterSource(e.target.value as any)}
+                    onChange={e => setFilterSource(e.target.value as 'all' | 'whatsapp' | 'imported')}
                   >
                     <option value="all">All Sources</option>
                     <option value="whatsapp">WhatsApp Contacts</option>
