@@ -523,7 +523,11 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     try {
       // Ensure participant IDs are in correct format
       const participantIds = participants.map(p => (p.includes('@') ? p : `${p}@c.us`));
-      const result = await this.client!.createGroup(name, participantIds);
+      
+      // autoSendInviteV4: false prevents the internal WhatsApp Web update crash:
+      // "TypeError: this.findImpl is not a function" which triggers when trying to automatically
+      // send invite links to contacts who restricted group additions in their privacy settings (403).
+      const result = await this.client!.createGroup(name, participantIds, { autoSendInviteV4: false });
 
       if (!result || !(result as unknown as GroupCreateResult).gid) {
         throw new Error('Failed to create group: Invalid response from WhatsApp');
