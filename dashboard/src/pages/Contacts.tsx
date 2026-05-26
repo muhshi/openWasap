@@ -104,7 +104,22 @@ export function Contacts() {
 
   // Kontak
   const [whatsappContacts, setWhatsappContacts] = useState<DisplayContact[]>([]);
-  const [importedContacts, setImportedContacts] = useState<DisplayContact[]>(DEFAULT_CONTACTS);
+  
+  // Load initial contacts from localStorage or use DEFAULT_CONTACTS
+  const [importedContacts, setImportedContacts] = useState<DisplayContact[]>(() => {
+    const saved = localStorage.getItem('openwa_custom_contacts');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved contacts', e);
+      }
+    }
+    // If not saved before, initialize with default contacts and save them
+    localStorage.setItem('openwa_custom_contacts', JSON.stringify(DEFAULT_CONTACTS));
+    return DEFAULT_CONTACTS;
+  });
+
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSource, setFilterSource] = useState<'all' | 'whatsapp' | 'imported'>('all');
@@ -117,6 +132,29 @@ export function Contacts() {
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+
+  // Penambahan Kontak Secara Manual
+  const [isAddContactOpen, setIsAddContactOpen] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactPhone, setNewContactPhone] = useState('');
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Reset page to 1 when filters or query change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterSource]);
+
+  // Helper to save contacts to state and database (localStorage)
+  const saveCustomContacts = (updatedOrUpdater: DisplayContact[] | ((prev: DisplayContact[]) => DisplayContact[])) => {
+    setImportedContacts(prev => {
+      const next = typeof updatedOrUpdater === 'function' ? updatedOrUpdater(prev) : updatedOrUpdater;
+      localStorage.setItem('openwa_custom_contacts', JSON.stringify(next));
+      return next;
+    });
+  };
 
   // Set default session if available
   useEffect(() => {
@@ -218,7 +256,7 @@ export function Contacts() {
           }
           const parsed = parseRows(results.data as Record<string, unknown>[]);
           if (parsed.length > 0) {
-            setImportedContacts(prev => [...prev, ...parsed]);
+            saveCustomContacts(prev => [...prev, ...parsed]);
             toast.success(t('contacts.toasts.importSuccess', { count: parsed.length }));
           } else {
             toast.error(t('contacts.toasts.importFailed', { error: 'No contacts found or headers mismatched.' }));
@@ -240,7 +278,7 @@ export function Contacts() {
           const parsed = parseRows(json);
 
           if (parsed.length > 0) {
-            setImportedContacts(prev => [...prev, ...parsed]);
+            saveCustomContacts(prev => [...prev, ...parsed]);
             toast.success(t('contacts.toasts.importSuccess', { count: parsed.length }));
           } else {
             toast.error(t('contacts.toasts.importFailed', { error: 'No contacts found or headers mismatched.' }));
@@ -353,9 +391,50 @@ export function Contacts() {
   };
 
   const clearImported = () => {
-    setImportedContacts([]);
-    setSelectedContacts([]);
-    toast.info('Imported contacts cleared.');
+    if (window.confirm('Apakah Anda yakin ingin menghapus semua kontak?')) {
+      saveCustomContacts([]);
+      setSelectedContacts([]);
+      toast.info('Semua kontak berhasil dihapus.');
+    }
+  };
+
+  const deleteContact = (phone: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm('Hapus kontak ini?')) {
+      saveCustomContacts(prev => prev.filter(c => c.phone !== phone));
+      setSelectedContacts(prev => prev.filter(p => p !== phone));
+      toast.info('Kontak berhasil dihapus.');
+    }
+  };
+
+  const handleAddContactSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newContactName.trim() || !newContactPhone.trim()) return;
+
+    const phone = cleanPhoneNumber(newContactPhone);
+    if (!phone) {
+      toast.error('Format nomor HP tidak valid.');
+      return;
+    }
+
+    if (importedContacts.some(c => c.phone === phone)) {
+      toast.error('Kontak dengan nomor HP ini sudah ada.');
+      return;
+    }
+
+    const newContact: DisplayContact = {
+      id: `imported_${phone}_${Date.now()}`,
+      name: newContactName.trim(),
+      phone,
+      source: 'imported'
+    };
+
+    saveCustomContacts(prev => [...prev, newContact]);
+    toast.success('Kontak berhasil ditambahkan.');
+
+    setNewContactName('');
+    setNewContactPhone('');
+    setIsAddContactOpen(false);
   };
 
   const downloadCsvTemplate = () => {
@@ -495,6 +574,13 @@ export function Contacts() {
               <Plus size={18} />
               {t('contacts.createGroupBtn')}
             </button>
+            <button
+              className="add-contact-btn"
+              onClick={() => setIsAddContactOpen(true)}
+            >
+              <Plus size={18} />
+              Add Contact
+            </button>
             <span className="selected-hint">
               {selectedContacts.length} contacts selected
             </span>
@@ -548,57 +634,114 @@ export function Contacts() {
                 <p>{t('contacts.noContacts')}</p>
               </div>
             ) : (
-              <div className="table-container">
-                <table className="contacts-table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 40 }}>
-                        <input
-                          type="checkbox"
-                          checked={isAllSelected}
-                          onChange={toggleSelectAll}
-                        />
-                      </th>
-                      <th>{t('contacts.table.name')}</th>
-                      <th>{t('contacts.table.phone')}</th>
-                      <th>{t('contacts.table.source')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredContacts.map(c => {
-                      const isSelected = selectedContacts.includes(c.phone);
-                      return (
-                        <tr
-                          key={c.id}
-                          className={isSelected ? 'selected-row' : ''}
-                          onClick={() => toggleSelectContact(c.phone)}
-                        >
-                          <td onClick={e => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleSelectContact(c.phone)}
-                            />
-                          </td>
-                          <td className="contact-name">
-                            <span>{c.name}</span>
-                          </td>
-                          <td className="contact-phone mono">+{c.phone}</td>
-                          <td>
-                            <span className={`badge badge-${c.source}`}>
-                              {c.source === 'whatsapp' ? (
-                                <RefreshCw size={10} />
-                              ) : (
-                                <FileSpreadsheet size={10} />
+              <div className="table-container" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ flexGrow: 1, overflowY: 'auto' }}>
+                  <table className="contacts-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 40 }}>
+                          <input
+                            type="checkbox"
+                            checked={isAllSelected}
+                            onChange={toggleSelectAll}
+                          />
+                        </th>
+                        <th>{t('contacts.table.name')}</th>
+                        <th>{t('contacts.table.phone')}</th>
+                        <th>{t('contacts.table.source')}</th>
+                        <th style={{ width: 80, textAlign: 'right' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedContacts.map(c => {
+                        const isSelected = selectedContacts.includes(c.phone);
+                        return (
+                          <tr
+                            key={c.id}
+                            className={isSelected ? 'selected-row' : ''}
+                            onClick={() => toggleSelectContact(c.phone)}
+                          >
+                            <td onClick={e => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectContact(c.phone)}
+                              />
+                            </td>
+                            <td className="contact-name">
+                              <span>{c.name}</span>
+                            </td>
+                            <td className="contact-phone mono">+{c.phone}</td>
+                            <td>
+                              <span className={`badge badge-${c.source}`}>
+                                {c.source === 'whatsapp' ? (
+                                  <RefreshCw size={10} />
+                                ) : (
+                                  <FileSpreadsheet size={10} />
+                                )}
+                                {t(`contacts.sources.${c.source}`)}
+                              </span>
+                            </td>
+                            <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                              {c.source === 'imported' && (
+                                <button
+                                  className="delete-row-btn"
+                                  onClick={(e) => deleteContact(c.phone, e)}
+                                  title="Hapus Kontak"
+                                >
+                                  <X size={14} />
+                                </button>
                               )}
-                              {t(`contacts.sources.${c.source}`)}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="pagination-bar">
+                  <div className="pagination-info">
+                    Showing {filteredContacts.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{' '}
+                    {Math.min(filteredContacts.length, currentPage * pageSize)} of{' '}
+                    {filteredContacts.length} contacts
+                  </div>
+                  <div className="pagination-controls">
+                    <button
+                      className="pagination-btn"
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    >
+                      Previous
+                    </button>
+                    
+                    <span className="page-indicator">
+                      Page {currentPage} of {totalPages || 1}
+                    </span>
+
+                    <button
+                      className="pagination-btn"
+                      disabled={currentPage === totalPages || totalPages === 0}
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    >
+                      Next
+                    </button>
+
+                    <select
+                      className="page-size-select"
+                      value={pageSize}
+                      onChange={e => {
+                        setPageSize(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                    >
+                      <option value={10}>10 / page</option>
+                      <option value={25}>25 / page</option>
+                      <option value={50}>50 / page</option>
+                      <option value={100}>100 / page</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -654,6 +797,63 @@ export function Contacts() {
                     <Check size={16} />
                   )}
                   {isCreatingGroup ? t('contacts.creating') : t('contacts.create')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Kontak */}
+      {isAddContactOpen && (
+        <div className="modal-overlay" onClick={() => setIsAddContactOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Tambah Kontak Baru</h2>
+              <button className="close-modal-btn" onClick={() => setIsAddContactOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleAddContactSubmit}>
+              <div className="form-group">
+                <label htmlFor="contact-name">Nama Lengkap / Petugas</label>
+                <input
+                  id="contact-name"
+                  type="text"
+                  required
+                  value={newContactName}
+                  onChange={e => setNewContactName(e.target.value)}
+                  placeholder="Contoh: AHMAD GHOZALI"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="contact-phone">Nomor HP / WhatsApp</label>
+                <input
+                  id="contact-phone"
+                  type="text"
+                  required
+                  value={newContactPhone}
+                  onChange={e => setNewContactPhone(e.target.value)}
+                  placeholder="Contoh: 081225008906 atau 6281225008906"
+                />
+              </div>
+
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn-cancel"
+                  onClick={() => setIsAddContactOpen(false)}
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="btn-submit"
+                  disabled={!newContactName.trim() || !newContactPhone.trim()}
+                >
+                  <Check size={16} />
+                  Simpan Kontak
                 </button>
               </div>
             </form>
