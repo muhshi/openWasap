@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, HttpCode, HttpStatus, HttpException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsArray, ArrayMinSize } from 'class-validator';
 import { SessionService } from '../session/session.service';
@@ -73,8 +73,18 @@ export class GroupController {
   @ApiBody({ type: CreateGroupDto })
   @ApiResponse({ status: 201, description: 'Group created' })
   async create(@Param('sessionId') sessionId: string, @Body() dto: CreateGroupDto) {
-    const engine = this.getEngine(sessionId);
-    return engine.createGroup(dto.name, dto.participants);
+    try {
+      const engine = this.getEngine(sessionId);
+      return await engine.createGroup(dto.name, dto.participants);
+    } catch (error) {
+      throw new HttpException(
+        {
+          status: HttpStatus.BAD_REQUEST,
+          error: error instanceof Error ? error.message : 'Failed to create WhatsApp group',
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
   }
 
   @Post(':groupId/participants')

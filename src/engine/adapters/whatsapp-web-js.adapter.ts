@@ -114,6 +114,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   private setupEventHandlers(): void {
     if (!this.client) return;
 
+    this.client.on('error', (error) => {
+      this.logger.error(`WhatsApp client error: ${String(error)}`, error instanceof Error ? error.stack : undefined);
+    });
+
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
     this.client.on('qr', async (qr: string) => {
       try {
@@ -516,16 +520,25 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
   async createGroup(name: string, participants: string[]): Promise<Group> {
     this.ensureReady();
-    // Ensure participant IDs are in correct format
-    const participantIds = participants.map(p => (p.includes('@') ? p : `${p}@c.us`));
-    const result = await this.client!.createGroup(name, participantIds);
+    try {
+      // Ensure participant IDs are in correct format
+      const participantIds = participants.map(p => (p.includes('@') ? p : `${p}@c.us`));
+      const result = await this.client!.createGroup(name, participantIds);
 
-    const groupId = String((result as unknown as GroupCreateResult).gid._serialized);
-    return {
-      id: groupId,
-      name: name,
-      participantsCount: participants.length,
-    };
+      if (!result || !(result as unknown as GroupCreateResult).gid) {
+        throw new Error('Failed to create group: Invalid response from WhatsApp');
+      }
+
+      const groupId = String((result as unknown as GroupCreateResult).gid._serialized);
+      return {
+        id: groupId,
+        name: name,
+        participantsCount: participants.length,
+      };
+    } catch (error) {
+      this.logger.error(`Error in createGroup: ${String(error)}`, error instanceof Error ? error.stack : undefined);
+      throw error;
+    }
   }
 
   async addParticipants(groupId: string, participants: string[]): Promise<void> {
