@@ -32,6 +32,63 @@ interface DisplayContact {
   isBlocked?: boolean;
 }
 
+const DEFAULT_CONTACTS: DisplayContact[] = [
+  { id: 'default_6285727253827_0', name: 'AHMAD KASYIF SYAROF', phone: '6285727253827', source: 'imported' },
+  { id: 'default_6285848480751_1', name: 'AQIM LAKUMAL KIBRIYA', phone: '6285848480751', source: 'imported' },
+  { id: 'default_6282226416889_2', name: 'Hasan taufiq', phone: '6282226416889', source: 'imported' },
+  { id: 'default_6282310559106_3', name: 'Malikhatun Hidayah', phone: '6282310559106', source: 'imported' },
+  { id: 'default_6281225008906_4', name: 'AHMAD GHOZALI', phone: '6281225008906', source: 'imported' },
+  { id: 'default_62895352968314_5', name: 'Edi Susanto', phone: '62895352968314', source: 'imported' },
+  { id: 'default_628886615482_6', name: 'Muzaki Manaf', phone: '628886615482', source: 'imported' },
+  { id: 'default_6285326024321_7', name: 'Nur Hidayat', phone: '6285326024321', source: 'imported' },
+  { id: 'default_6289508592098_8', name: 'Ahmad Baihaqi', phone: '6289508592098', source: 'imported' },
+  { id: 'default_6282227182516_9', name: 'Fahmi Ainun Najib', phone: '6282227182516', source: 'imported' },
+  { id: 'default_6283865650017_10', name: 'IIN ELIVA', phone: '6283865650017', source: 'imported' },
+  { id: 'default_6285228199040_11', name: 'NUR MA\'RIFAH', phone: '6285228199040', source: 'imported' },
+  { id: 'default_6282328093023_12', name: 'LAILA LATIFATUL MUNAWAROH', phone: '6282328093023', source: 'imported' },
+  { id: 'default_6288901293973_13', name: 'Felasuf Al Zaki', phone: '6288901293973', source: 'imported' },
+  { id: 'default_628982375060_14', name: 'Muhammad ulfi Sholeh', phone: '628982375060', source: 'imported' },
+  { id: 'default_6288215754636_15', name: 'Atik aulia rohmasani', phone: '6288215754636', source: 'imported' },
+  { id: 'default_6289630548046_16', name: 'Mina Ulyatul Umroh', phone: '6289630548046', source: 'imported' },
+  { id: 'default_62859165961517_17', name: 'Nurun Nafiqoh', phone: '62859165961517', source: 'imported' },
+  { id: 'default_6289519688567_18', name: 'Aminatus Soimah', phone: '6289519688567', source: 'imported' },
+  { id: 'default_6287766622597_19', name: 'Mohamad Ihwan Zamroni', phone: '6287766622597', source: 'imported' },
+  { id: 'default_6281297455382_20', name: 'Muhammad Izzuddin Fikri', phone: '6281297455382', source: 'imported' },
+  { id: 'default_6282236177014_21', name: 'IMRON ROSYADI', phone: '6282236177014', source: 'imported' },
+  { id: 'default_6282223664373_22', name: 'Kholisotun Naimah', phone: '6282223664373', source: 'imported' },
+  { id: 'default_6282134625933_23', name: 'Nur Fatimayasari', phone: '6282134625933', source: 'imported' },
+  { id: 'default_62895360596233_24', name: 'Satria Tri Astutik', phone: '62895360596233', source: 'imported' },
+  { id: 'default_6282226416524_25', name: 'Azifatul Fatimah', phone: '6282226416524', source: 'imported' },
+  { id: 'default_6281390153810_26', name: 'Faisal Basir', phone: '6281390153810', source: 'imported' },
+  { id: 'default_6281328767425_27', name: 'ALI RIDHO', phone: '6281328767425', source: 'imported' },
+  { id: 'default_6285293033540_28', name: 'Adis Rohmatullah', phone: '6285293033540', source: 'imported' },
+  { id: 'default_628871350561_29', name: 'Dwi mustika melati', phone: '628871350561', source: 'imported' },
+  { id: 'default_6282310191286_30', name: 'Nur Laili wakhidah', phone: '6282310191286', source: 'imported' },
+  { id: 'default_6285290652076_31', name: 'UBAIDILLAH', phone: '6285290652076', source: 'imported' },
+  { id: 'default_6281225135321_32', name: 'MUHAMAD LATIF', phone: '6281225135321', source: 'imported' },
+  { id: 'default_6285735169571_33', name: 'Muhammad Rifqi Mubarok', phone: '6285735169571', source: 'imported' },
+  { id: 'default_6281808040549_34', name: 'Nurma Amaliya', phone: '6281808040549', source: 'imported' },
+  { id: 'default_6281393546261_35', name: 'Agus Ubaidillah', phone: '6281393546261', source: 'imported' },
+  { id: 'default_6281513898641_36', name: 'Himmatul Cahyani', phone: '6281513898641', source: 'imported' },
+  { id: 'default_628895742401_37', name: 'Inayah', phone: '628895742401', source: 'imported' },
+  { id: 'default_6289666979475_38', name: 'ULIS SAKHOWATI', phone: '6289666979475', source: 'imported' },
+  { id: 'default_6282136428106_39', name: 'muhibbin', phone: '6282136428106', source: 'imported' },
+  { id: 'default_6282248969719_40', name: 'Roikhatul Miskiyah', phone: '6282248969719', source: 'imported' },
+  { id: 'default_6282131034191_41', name: 'anissaur rohmah', phone: '6282131034191', source: 'imported' },
+  { id: 'default_6285326851881_42', name: 'AZIZATUS SAB\'AH', phone: '6285326851881', source: 'imported' },
+  { id: 'default_628997346166_43', name: 'Inna Naili Izzatul Laila', phone: '628997346166', source: 'imported' },
+  { id: 'default_6281334660013_44', name: 'KHOTIMUL MANAN', phone: '6281334660013', source: 'imported' },
+  { id: 'default_6282390611565_45', name: 'MUH. ADIB DAROJAD', phone: '6282390611565', source: 'imported' },
+  { id: 'default_62895800022987_46', name: 'Wachidatul Fitriyah', phone: '62895800022987', source: 'imported' },
+  { id: 'default_6281912892273_47', name: 'DZIKRULLOH', phone: '6281912892273', source: 'imported' },
+  { id: 'default_6283122591676_48', name: 'FATKHUL AFIF', phone: '6283122591676', source: 'imported' },
+  { id: 'default_6282324157282_49', name: 'Ifa Nurliana', phone: '6282324157282', source: 'imported' },
+  { id: 'default_6285290473613_50', name: 'Mustamiroh', phone: '6285290473613', source: 'imported' },
+  { id: 'default_6283850580551_51', name: 'PUTRI SUCI ULYANI', phone: '6283850580551', source: 'imported' },
+  { id: 'default_6285238486946_52', name: 'Nur ikhsan', phone: '6285238486946', source: 'imported' },
+  { id: 'default_6288216691735_53', name: 'Sukamad', phone: '6288216691735', source: 'imported' }
+];
+
 export function Contacts() {
   const { t } = useTranslation();
   useDocumentTitle(t('contacts.title'));
@@ -47,7 +104,7 @@ export function Contacts() {
 
   // Kontak
   const [whatsappContacts, setWhatsappContacts] = useState<DisplayContact[]>([]);
-  const [importedContacts, setImportedContacts] = useState<DisplayContact[]>([]);
+  const [importedContacts, setImportedContacts] = useState<DisplayContact[]>(DEFAULT_CONTACTS);
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSource, setFilterSource] = useState<'all' | 'whatsapp' | 'imported'>('all');
@@ -301,6 +358,39 @@ export function Contacts() {
     toast.info('Imported contacts cleared.');
   };
 
+  const downloadCsvTemplate = () => {
+    const headers = ['Name', 'Phone'];
+    const rows = DEFAULT_CONTACTS.map(c => `"${c.name.replace(/"/g, '""')}","${c.phone}"`);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n'); // Add UTF-8 BOM
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'contacts_template.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('CSV template downloaded successfully.');
+  };
+
+  const downloadExcelTemplate = () => {
+    try {
+      const data = DEFAULT_CONTACTS.map(c => ({
+        'Name': c.name,
+        'Phone': c.phone
+      }));
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Contacts');
+      XLSX.writeFile(workbook, 'contacts_template.xlsx');
+      toast.success('Excel template downloaded successfully.');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to generate Excel template.');
+    }
+  };
+
   if (loadingSessions) {
     return (
       <div className="contacts-page loading">
@@ -341,6 +431,17 @@ export function Contacts() {
               <Upload className="upload-icon" size={36} />
               <span>Drag & drop files here or click to upload</span>
               <span className="file-hint">CSV or Excel (.xlsx, .xls)</span>
+            </div>
+
+            <div className="template-downloads">
+              <button className="template-btn csv" onClick={(e) => { e.stopPropagation(); downloadCsvTemplate(); }}>
+                <FileSpreadsheet size={14} />
+                Download CSV Template
+              </button>
+              <button className="template-btn xlsx" onClick={(e) => { e.stopPropagation(); downloadExcelTemplate(); }}>
+                <FileSpreadsheet size={14} />
+                Download Excel Template
+              </button>
             </div>
 
             {importedContacts.length > 0 && (

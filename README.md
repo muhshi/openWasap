@@ -303,6 +303,7 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 ### [2026-05-26]
 - **Perbaikan DTO Grup**: Menambahkan dekorator class-validator pada DTO di `group.controller.ts` untuk mengatasi error 400 Bad Request.
 - **Fitur Konten Baru (Contacts Manager)**: Menambahkan halaman Kontak terpadu di React Dashboard yang mendukung import kontak dari file CSV/Excel (.xlsx) secara client-side, standardisasi nomor telepon otomatis (`08` -> `62`), serta memicu pembuatan grup di WhatsApp langsung dari daftar kontak yang dipilih.
+- **Dukungan Template & Preload Kontak**: Menambahkan tombol untuk mengunduh template CSV dan Excel dari Contacts Page, serta mem-preload daftar 54 kontak petugas secara default saat halaman dimuat.
 
 ---
 
