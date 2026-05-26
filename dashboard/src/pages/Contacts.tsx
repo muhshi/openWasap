@@ -363,6 +363,13 @@ export function Contacts() {
     return matchesSearch && matchesSource;
   });
 
+  // Kalkulasi pagination
+  const totalPages = Math.ceil(filteredContacts.length / pageSize);
+  const paginatedContacts = filteredContacts.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
   // Pemilihan kontak
   const toggleSelectContact = (phone: string) => {
     setSelectedContacts(prev =>
