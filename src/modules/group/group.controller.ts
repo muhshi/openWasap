@@ -77,10 +77,21 @@ export class GroupController {
       const engine = this.getEngine(sessionId);
       return await engine.createGroup(dto.name, dto.participants);
     } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : 'Failed to create WhatsApp group';
+      
+      // Provide user-friendly messages for known WhatsApp errors
+      let userMessage = rawMessage;
+      if (rawMessage.includes('rate-overlimit')) {
+        userMessage = 'WhatsApp membatasi pembuatan grup sementara karena terlalu banyak percobaan. Silakan tunggu beberapa menit dan coba lagi.';
+      } else if (rawMessage.includes('not ready') || rawMessage.includes('not started')) {
+        userMessage = 'Sesi WhatsApp belum terhubung. Pastikan sesi dalam status READY.';
+      }
+
       throw new HttpException(
         {
-          status: HttpStatus.BAD_REQUEST,
-          error: error instanceof Error ? error.message : 'Failed to create WhatsApp group',
+          statusCode: HttpStatus.BAD_REQUEST,
+          message: userMessage,
+          error: rawMessage,
         },
         HttpStatus.BAD_REQUEST,
       );
