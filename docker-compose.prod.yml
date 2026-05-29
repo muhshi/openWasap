@@ -8,19 +8,26 @@ services:
       - postgres-net
     environment:
       - PGPASSWORD=${DATABASE_PASSWORD}
-    command: >
-      sh -c "
-        echo 'Waiting for PostgreSQL...' &&
-        until pg_isready -h ${DATABASE_HOST:-10.133.21.24} -p ${DATABASE_PORT:-5433} -U ${DATABASE_USERNAME:-bpsdemak}; do
-          sleep 2;
-        done &&
-        echo 'PostgreSQL is ready.' &&
-        psql -h ${DATABASE_HOST:-10.133.21.24} -p ${DATABASE_PORT:-5433} -U ${DATABASE_USERNAME:-bpsdemak} -lqt |
-        cut -d '|' -f1 | grep -qw '${DATABASE_NAME:-openwa}' ||
-        psql -h ${DATABASE_HOST:-10.133.21.24} -p ${DATABASE_PORT:-5433} -U ${DATABASE_USERNAME:-bpsdemak}
-        -c 'CREATE DATABASE \"${DATABASE_NAME:-openwa}\";' &&
-        echo 'Database ready.'
-      "
+      - DB_HOST=${DATABASE_HOST:-10.133.21.24}
+      - DB_PORT=${DATABASE_PORT:-5433}
+      - DB_USER=${DATABASE_USERNAME:-bpsdemak}
+      - DB_NAME=${DATABASE_NAME:-openwa}
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until pg_isready -h $$DB_HOST -p $$DB_PORT -U $$DB_USER; do
+          echo "Waiting for PostgreSQL at $$DB_HOST:$$DB_PORT..."
+          sleep 2
+        done
+        echo "PostgreSQL is ready."
+        if psql -h $$DB_HOST -p $$DB_PORT -U $$DB_USER -lqt | cut -d'|' -f1 | grep -qw $$DB_NAME; then
+          echo "Database '$$DB_NAME' already exists, skipping."
+        else
+          echo "Creating database '$$DB_NAME'..."
+          psql -h $$DB_HOST -p $$DB_PORT -U $$DB_USER -c "CREATE DATABASE \"$$DB_NAME\";"
+          echo "Database '$$DB_NAME' created."
+        fi
 
   # ===== CORE: OpenWA Backend API =====
   openwa:
