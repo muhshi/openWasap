@@ -39,5 +39,23 @@ const postgresDataSource = new DataSource({
   },
 });
 
+// MySQL configuration
+const mysqlDataSource = new DataSource({
+  type: 'mysql',
+  host: process.env.DATABASE_HOST || 'localhost',
+  port: parseInt(process.env.DATABASE_PORT || '3306', 10),
+  username: process.env.DATABASE_USERNAME,
+  password: process.env.DATABASE_PASSWORD,
+  database: process.env.DATABASE_NAME || 'openwa',
+  entities: [__dirname + '/../**/*.entity{.ts,.js}'],
+  migrations: [__dirname + '/migrations/*{.ts,.js}'],
+  synchronize: false,
+  logging: process.env.DATABASE_LOGGING === 'true',
+  charset: 'utf8mb4',
+  extra: {
+    connectionLimit: parseInt(process.env.DATABASE_POOL_SIZE || '10', 10),
+  },
+});
+
 // Export the appropriate data source based on DATABASE_TYPE
-export default dbType === 'postgres' ? postgresDataSource : sqliteDataSource;
+export default dbType === 'postgres' ? postgresDataSource : dbType === 'mysql' ? mysqlDataSource : sqliteDataSource;

@@ -26,19 +26,23 @@ export default () => ({
     logging: process.env.DATABASE_LOGGING === 'true',
   },
 
-  // Data Storage Database configuration (pluggable: SQLite, PostgreSQL, etc.)
+  // Data Storage Database configuration (pluggable: SQLite, PostgreSQL, MySQL)
   dataDatabase: {
     type: process.env.DATABASE_TYPE || 'sqlite',
     // SQLite path (used when type is sqlite)
     database: process.env.DATABASE_NAME || './data/openwa.sqlite',
     // PostgreSQL/MySQL connection (used when type is postgres/mysql)
     host: process.env.DATABASE_HOST || 'localhost',
-    port: parseInt(process.env.DATABASE_PORT || '5432', 10),
+    port: parseInt(
+      process.env.DATABASE_PORT ||
+        (process.env.DATABASE_TYPE === 'mysql' ? '3306' : '5432'),
+      10,
+    ),
     username: process.env.DATABASE_USERNAME,
     password: process.env.DATABASE_PASSWORD,
-    synchronize: process.env.DATABASE_SYNCHRONIZE === 'true',
+    synchronize: process.env.DATABASE_SYNCHRONIZE !== 'false',
     logging: process.env.DATABASE_LOGGING === 'true',
-    // Connection pooling (PostgreSQL)
+    // Connection pooling
     poolSize: parseInt(process.env.DATABASE_POOL_SIZE || '10', 10),
     // SSL configuration
     ssl: process.env.DATABASE_SSL === 'true',

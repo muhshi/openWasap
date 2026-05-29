@@ -45,18 +45,61 @@ if (process.env.QUEUE_ENABLED === 'true') {
       load: [configuration],
     }),
 
-    // Main Database (always SQLite - boot config)
+    // Main Database (auth & audit tables)
     TypeOrmModule.forRootAsync({
       name: 'main',
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        type: 'sqlite' as const,
-        database: configService.get<string>('database.database', './data/main.sqlite'),
-        entities: [__dirname + '/modules/auth/**/*.entity{.ts,.js}', __dirname + '/modules/audit/**/*.entity{.ts,.js}'],
-        synchronize: true,
-        logging: configService.get<boolean>('database.logging', false),
-      }),
+      useFactory: (configService: ConfigService) => {
+        const dbType = configService.get<string>('dataDatabase.type', 'sqlite');
+        const entities = [
+          __dirname + '/modules/auth/**/*.entity{.ts,.js}',
+          __dirname + '/modules/audit/**/*.entity{.ts,.js}',
+        ];
+        const logging = configService.get<boolean>('database.logging', false);
+
+        if (dbType === 'mysql') {
+          return {
+            type: 'mysql' as const,
+            host: configService.get<string>('dataDatabase.host', 'localhost'),
+            port: configService.get<number>('dataDatabase.port', 3306),
+            username: configService.get<string>('dataDatabase.username'),
+            password: configService.get<string>('dataDatabase.password'),
+            database: configService.get<string>('dataDatabase.database', 'openwa'),
+            entities,
+            synchronize: true,
+            logging,
+            charset: 'utf8mb4',
+            retryAttempts: 10,
+            retryDelay: 3000,
+          };
+        }
+
+        if (dbType === 'postgres') {
+          return {
+            type: 'postgres' as const,
+            host: configService.get<string>('dataDatabase.host', 'localhost'),
+            port: configService.get<number>('dataDatabase.port', 5432),
+            username: configService.get<string>('dataDatabase.username'),
+            password: configService.get<string>('dataDatabase.password'),
+            database: configService.get<string>('dataDatabase.database', 'openwa'),
+            entities,
+            synchronize: true,
+            logging,
+            retryAttempts: 10,
+            retryDelay: 3000,
+          };
+        }
+
+        // Default: SQLite
+        return {
+          type: 'sqlite' as const,
+          database: configService.get<string>('database.database', './data/main.sqlite'),
+          entities,
+          synchronize: true,
+          logging,
+        };
+      },
     }),
 
     // Data Storage Database (pluggable - user data)
@@ -65,7 +108,7 @@ if (process.env.QUEUE_ENABLED === 'true') {
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        const dbType = configService.get<'sqlite' | 'postgres'>('dataDatabase.type', 'sqlite');
+        const dbType = configService.get<string>('dataDatabase.type', 'sqlite');
         const baseConfig = {
           entities: [
             __dirname + '/modules/session/**/*.entity{.ts,.js}',
@@ -77,6 +120,26 @@ if (process.env.QUEUE_ENABLED === 'true') {
           logging: configService.get<boolean>('dataDatabase.logging', false),
         };
 
+        if (dbType === 'mysql') {
+          return {
+            ...baseConfig,
+            type: 'mysql' as const,
+            host: configService.get<string>('dataDatabase.host', 'localhost'),
+            port: configService.get<number>('dataDatabase.port', 3306),
+            username: configService.get<string>('dataDatabase.username'),
+            password: configService.get<string>('dataDatabase.password'),
+            database: configService.get<string>('dataDatabase.database', 'openwa'),
+            synchronize: configService.get<boolean>('dataDatabase.synchronize', true),
+            migrationsRun: false,
+            retryAttempts: 10,
+            retryDelay: 3000,
+            charset: 'utf8mb4',
+            extra: {
+              connectionLimit: configService.get<number>('dataDatabase.poolSize', 10),
+            },
+          };
+        }
+
         if (dbType === 'postgres') {
           return {
             ...baseConfig,
@@ -85,7 +148,7 @@ if (process.env.QUEUE_ENABLED === 'true') {
             port: configService.get<number>('dataDatabase.port'),
             username: configService.get<string>('dataDatabase.username'),
             password: configService.get<string>('dataDatabase.password'),
-            database: 'openwa',
+            database: configService.get<string>('dataDatabase.database', 'openwa'),
             // Never auto-sync Postgres in production; rely on migrations.
             synchronize: configService.get<boolean>('dataDatabase.synchronize', false),
             migrationsRun: true,
