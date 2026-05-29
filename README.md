@@ -301,6 +301,14 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 ## 📝 Changelog
 
 ### [2026-05-29]
+- **Optimasi Build Docker (Percepatan Signifikan)**: Refactor `Dockerfile` backend dan `dashboard/Dockerfile` untuk memaksimalkan layer caching Docker:
+  - Memisahkan stage instalasi prod-dependencies (`deps`) dari stage build source agar layer `npm ci --omit=dev` ter-cache secara independen—tidak perlu diulang saat source code berubah.
+  - Menambahkan flag `--ignore-scripts` di builder stage untuk mencegah `postinstall` memicu instalasi duplikat dependency dashboard.
+  - Menambahkan `dashboard/.dockerignore` untuk mengeksklusikan `node_modules` (100MB+) dari build context dashboard—mengurangi waktu transfer context secara dramatis.
+  - Mengeksklusikan folder `dashboard/` dari build context backend via root `.dockerignore`.
+  - Memindahkan `chown` hanya ke `/app/data` (bukan rekursif ke seluruh `/app`) untuk menghindari operasi chown pada ribuan file `node_modules`.
+  - Menghapus key `version` yang obsolete dari `docker-compose.prod.yml`.
+
 - **Fitur Sandbox Multi-Tenancy (Isolasi Data Eksplisit)**: Menambahkan kolom `ownerApiKeyId` ke entitas **Sessions**, **Imported Contacts**, dan **Contact Groups** untuk membatasi akses data. Setiap user (berdasarkan API Key operator/viewer yang login) kini hanya dapat melihat, membuat, mengelola, dan mem-blast sesi/kontak/grup miliknya sendiri secara privat. Peran `ADMIN` tetap memiliki akses global penuh.
 - **Dukungan Database MySQL & Dependensi**: Menginstal paket driver `mysql2` untuk memfasilitasi komunikasi backend NestJS dengan database MySQL secara native.
 - **Konfigurasi Deployment Docker Production**: Menyediakan file `docker-compose.prod.yml` khusus production dan file dokumentasi panduan deployment `docker-setting.md` siap pakai untuk mempermudah deploy di Ubuntu Server dengan dukungan koneksi ke database MySQL eksternal dan perutean proxy internal Nginx.

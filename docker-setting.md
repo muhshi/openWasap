@@ -96,3 +96,69 @@ Masukkan **API Key** yang digenerate di atas untuk login ke Dashboard Anda.
    - Isi nama teman Anda (misal: "Andi" atau "Budi"), pilih role `OPERATOR`, lalu klik simpan.
    - Berikan API Key yang digenerate tersebut kepada Andi/Budi.
 3. **Isolasi Mandiri**: Andi dan Budi sekarang dapat login sendiri menggunakan kunci mereka. Seluruh WhatsApp session, kontak impor, dan grup blast yang mereka buat hanya akan terlihat dan dapat diakses oleh akun mereka masing-masing.
+
+---
+
+## 6. Update ke Versi Terbaru (Deploy Script)
+
+Project ini dilengkapi script `deploy.sh` untuk memudahkan update. Cukup **satu perintah** setiap kali ada perubahan baru.
+
+### Setup Pertama Kali (hanya sekali)
+
+Beri permission eksekusi pada script:
+```bash
+chmod +x deploy.sh
+```
+
+### Cara Deploy / Update
+
+Setiap kali ada update kode terbaru, jalankan:
+```bash
+./deploy.sh
+```
+
+Script ini akan otomatis:
+1. **`git pull`** → mengambil perubahan terbaru dari GitHub
+2. **Build ulang image** → hanya layer yang berubah yang di-rebuild (cepat berkat layer cache)
+3. **Restart container** → container berjalan dengan kode terbaru
+4. **Cleanup** → hapus image lama yang tidak terpakai
+
+### Opsi Tambahan
+
+```bash
+# Paksa rebuild semua layer tanpa cache (gunakan jika ada masalah build)
+./deploy.sh --force
+```
+
+### Contoh Output
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  🚀 OpenWA Deploy Script
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📥 [1/4] Mengambil perubahan terbaru dari Git...
+   ✅ Ditemukan 3 commit baru. Pulling...
+
+🔨 [2/4] Build Docker image (layer yang tidak berubah akan di-cache)...
+   ✅ Build selesai.
+
+🔄 [3/4] Restart container dengan image terbaru...
+   ✅ Container berjalan.
+
+🧹 [4/4] Membersihkan image lama (dangling images)...
+   ✅ Cleanup selesai.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✅ Deploy berhasil!
+
+  📊 Dashboard  : http://10.0.0.5:2886
+  📚 API Docs   : http://10.0.0.5:2785/api/docs
+
+  Log backend   : docker logs -f openwa-api
+  Status semua  : docker compose -f docker-compose.prod.yml ps
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+> **Catatan Kecepatan**: Berkat optimasi multi-stage build dan layer caching, rebuild setelah perubahan source code biasanya hanya membutuhkan **~30 detik** untuk backend dan **~15 detik** untuk dashboard (bukan 1000+ detik seperti sebelumnya).
+
