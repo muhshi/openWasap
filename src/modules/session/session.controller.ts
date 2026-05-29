@@ -5,8 +5,8 @@ import { CreateSessionDto, SessionResponseDto, QRCodeResponseDto } from './dto';
 import { Session } from './entities/session.entity';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/entities/audit-log.entity';
-import { RequireRole } from '../auth/decorators/auth.decorators';
-import { ApiKeyRole } from '../auth/entities/api-key.entity';
+import { RequireRole, CurrentApiKey } from '../auth/decorators/auth.decorators';
+import { ApiKey, ApiKeyRole } from '../auth/entities/api-key.entity';
 
 @ApiTags('sessions')
 @Controller('sessions')
@@ -40,8 +40,11 @@ export class SessionController {
     type: SessionResponseDto,
   })
   @ApiResponse({ status: 409, description: 'Session name already exists' })
-  async create(@Body() dto: CreateSessionDto): Promise<Session> {
-    const session = await this.sessionService.create(dto);
+  async create(
+    @Body() dto: CreateSessionDto,
+    @CurrentApiKey() apiKey: ApiKey,
+  ): Promise<Session> {
+    const session = await this.sessionService.create(dto, apiKey);
     await this.auditService.logInfo(AuditAction.SESSION_CREATED, {
       sessionId: session.id,
       sessionName: session.name,
@@ -56,8 +59,8 @@ export class SessionController {
     description: 'List of sessions',
     type: [SessionResponseDto],
   })
-  async findAll(): Promise<SessionResponseDto[]> {
-    const sessions = await this.sessionService.findAll();
+  async findAll(@CurrentApiKey() apiKey: ApiKey): Promise<SessionResponseDto[]> {
+    const sessions = await this.sessionService.findAll(apiKey);
     return sessions.map(s => this.transformSession(s));
   }
 
@@ -70,8 +73,11 @@ export class SessionController {
     type: SessionResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Session not found' })
-  async findOne(@Param('id') id: string): Promise<SessionResponseDto> {
-    const session = await this.sessionService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentApiKey() apiKey: ApiKey,
+  ): Promise<SessionResponseDto> {
+    const session = await this.sessionService.findOne(id, apiKey);
     return this.transformSession(session);
   }
 
@@ -82,8 +88,11 @@ export class SessionController {
   @ApiParam({ name: 'id', description: 'Session ID' })
   @ApiResponse({ status: 204, description: 'Session deleted' })
   @ApiResponse({ status: 404, description: 'Session not found' })
-  async delete(@Param('id') id: string): Promise<void> {
-    const session = await this.sessionService.findOne(id);
+  async delete(
+    @Param('id') id: string,
+    @CurrentApiKey() apiKey: ApiKey,
+  ): Promise<void> {
+    const session = await this.sessionService.findOne(id, apiKey);
     await this.sessionService.delete(id);
     await this.auditService.logInfo(AuditAction.SESSION_DELETED, {
       sessionId: id,
@@ -104,7 +113,11 @@ export class SessionController {
   })
   @ApiResponse({ status: 400, description: 'Session already started' })
   @ApiResponse({ status: 404, description: 'Session not found' })
-  async start(@Param('id') id: string): Promise<SessionResponseDto> {
+  async start(
+    @Param('id') id: string,
+    @CurrentApiKey() apiKey: ApiKey,
+  ): Promise<SessionResponseDto> {
+    await this.sessionService.findOne(id, apiKey);
     const session = await this.sessionService.start(id);
     await this.auditService.logInfo(AuditAction.SESSION_STARTED, {
       sessionId: session.id,
@@ -123,7 +136,11 @@ export class SessionController {
     type: SessionResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Session not found' })
-  async stop(@Param('id') id: string): Promise<SessionResponseDto> {
+  async stop(
+    @Param('id') id: string,
+    @CurrentApiKey() apiKey: ApiKey,
+  ): Promise<SessionResponseDto> {
+    await this.sessionService.findOne(id, apiKey);
     const session = await this.sessionService.stop(id);
     await this.auditService.logInfo(AuditAction.SESSION_STOPPED, {
       sessionId: session.id,
@@ -145,7 +162,11 @@ export class SessionController {
     description: 'QR code not ready or session already authenticated',
   })
   @ApiResponse({ status: 404, description: 'Session not found' })
-  async getQRCode(@Param('id') id: string): Promise<QRCodeResponseDto> {
+  async getQRCode(
+    @Param('id') id: string,
+    @CurrentApiKey() apiKey: ApiKey,
+  ): Promise<QRCodeResponseDto> {
+    await this.sessionService.findOne(id, apiKey);
     const qrCode = await this.sessionService.getQRCode(id);
     await this.auditService.logInfo(AuditAction.SESSION_QR_GENERATED, {
       sessionId: id,
@@ -162,7 +183,11 @@ export class SessionController {
   })
   @ApiResponse({ status: 400, description: 'Session not ready' })
   @ApiResponse({ status: 404, description: 'Session not found' })
-  async getGroups(@Param('id') id: string): Promise<{ id: string; name: string }[]> {
+  async getGroups(
+    @Param('id') id: string,
+    @CurrentApiKey() apiKey: ApiKey,
+  ): Promise<{ id: string; name: string }[]> {
+    await this.sessionService.findOne(id, apiKey);
     return this.sessionService.getGroups(id);
   }
 

@@ -3,12 +3,14 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  UnauthorizedException,
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
 import { Session, SessionStatus } from './entities/session.entity';
+import { ApiKey, ApiKeyRole } from '../auth/entities/api-key.entity';
 import { CreateSessionDto } from './dto';
 import { EngineFactory } from '../../engine/engine.factory';
 import { IWhatsAppEngine, EngineStatus } from '../../engine/interfaces/whatsapp-engine.interface';
@@ -90,7 +92,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     this.reconnectStates.clear();
   }
 
-  async create(dto: CreateSessionDto): Promise<Session> {
+  async create(dto: CreateSessionDto, apiKey?: ApiKey): Promise<Session> {
     // Check if session with same name exists
     const existing = await this.sessionRepository.findOne({
       where: { name: dto.name },
@@ -106,6 +108,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
       proxyUrl: dto.proxyUrl || null,
       proxyType: dto.proxyType || null,
       status: SessionStatus.CREATED,
+      ownerApiKeyId: apiKey ? apiKey.id : null,
     });
 
     const saved = await this.dataSource.transaction(async manager => {
@@ -125,16 +128,23 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     return saved;
   }
 
-  async findAll(): Promise<Session[]> {
-    return this.sessionRepository.find({
+  async findAll(apiKey?: ApiKey): Promise<Session[]> {
+    const findOptions: any = {
       order: { createdAt: 'DESC' },
-    });
+    };
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN) {
+      findOptions.where = { ownerApiKeyId: apiKey.id };
+    }
+    return this.sessionRepository.find(findOptions);
   }
 
-  async findOne(id: string): Promise<Session> {
+  async findOne(id: string, apiKey?: ApiKey): Promise<Session> {
     const session = await this.sessionRepository.findOne({ where: { id } });
     if (!session) {
       throw new NotFoundException(`Session with id '${id}' not found`);
+    }
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && session.ownerApiKeyId !== apiKey.id) {
+      throw new UnauthorizedException('You do not have access to this session');
     }
     return session;
   }

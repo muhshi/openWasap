@@ -12,6 +12,7 @@ import { HookManager } from '../../core/hooks';
 function createMockSession(overrides: Partial<Session> = {}): Session {
   return {
     id: 'sess-uuid-1',
+    ownerApiKeyId: null,
     name: 'test-session',
     status: SessionStatus.CREATED,
     phone: null,

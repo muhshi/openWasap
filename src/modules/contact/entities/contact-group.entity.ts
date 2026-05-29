@@ -5,6 +5,9 @@ export class ContactGroup {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  ownerApiKeyId: string | null;
+
   @Column({ type: 'varchar', length: 255 })
   name: string;
 

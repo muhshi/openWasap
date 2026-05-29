@@ -14,6 +14,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty } fr
 import { IsString, IsNotEmpty, IsOptional, IsArray } from 'class-validator';
 import { ContactGroupService } from './contact-group.service';
 import { SessionService } from '../session/session.service';
+import { CurrentApiKey } from '../auth/decorators/auth.decorators';
+import { ApiKey } from '../auth/entities/api-key.entity';
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
@@ -81,23 +83,26 @@ export class ContactGroupController {
   @Get()
   @ApiOperation({ summary: 'List semua contact group (system group, bukan WhatsApp group)' })
   @ApiResponse({ status: 200, description: 'List group beserta jumlah anggota' })
-  async findAll() {
-    return this.contactGroupService.findAll();
+  async findAll(@CurrentApiKey() apiKey: ApiKey) {
+    return this.contactGroupService.findAll(apiKey);
   }
 
   @Post()
   @ApiOperation({ summary: 'Buat contact group baru' })
   @ApiBody({ type: CreateContactGroupDto })
   @ApiResponse({ status: 201, description: 'Group berhasil dibuat' })
-  async create(@Body() dto: CreateContactGroupDto) {
-    const group = await this.contactGroupService.create(dto.name, dto.description);
+  async create(
+    @Body() dto: CreateContactGroupDto,
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    const group = await this.contactGroupService.create(dto.name, dto.description, apiKey);
 
     // Tambah anggota awal jika ada
     if (dto.contactIds && dto.contactIds.length > 0) {
-      await this.contactGroupService.addMembers(group.id, dto.contactIds);
+      await this.contactGroupService.addMembers(group.id, dto.contactIds, apiKey);
     }
 
-    return this.contactGroupService.findOne(group.id);
+    return this.contactGroupService.findOne(group.id, apiKey);
   }
 
   @Get(':id')
@@ -105,8 +110,11 @@ export class ContactGroupController {
   @ApiParam({ name: 'id', description: 'Group ID' })
   @ApiResponse({ status: 200, description: 'Detail group dan anggotanya' })
   @ApiResponse({ status: 404, description: 'Group tidak ditemukan' })
-  async findOne(@Param('id') id: string) {
-    return this.contactGroupService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    return this.contactGroupService.findOne(id, apiKey);
   }
 
   @Put(':id')
@@ -115,8 +123,12 @@ export class ContactGroupController {
   @ApiBody({ type: UpdateContactGroupDto })
   @ApiResponse({ status: 200, description: 'Group berhasil diupdate' })
   @ApiResponse({ status: 404, description: 'Group tidak ditemukan' })
-  async update(@Param('id') id: string, @Body() dto: UpdateContactGroupDto) {
-    return this.contactGroupService.update(id, dto.name, dto.description);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateContactGroupDto,
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    return this.contactGroupService.update(id, dto.name, dto.description, apiKey);
   }
 
   @Delete(':id')
@@ -125,8 +137,11 @@ export class ContactGroupController {
   @ApiParam({ name: 'id', description: 'Group ID' })
   @ApiResponse({ status: 204, description: 'Group berhasil dihapus' })
   @ApiResponse({ status: 404, description: 'Group tidak ditemukan' })
-  async delete(@Param('id') id: string) {
-    await this.contactGroupService.delete(id);
+  async delete(
+    @Param('id') id: string,
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    await this.contactGroupService.delete(id, apiKey);
   }
 
   @Post(':id/members')
@@ -135,8 +150,12 @@ export class ContactGroupController {
   @ApiParam({ name: 'id', description: 'Group ID' })
   @ApiBody({ type: AddMembersDto })
   @ApiResponse({ status: 200, description: 'Anggota berhasil ditambahkan' })
-  async addMembers(@Param('id') id: string, @Body() dto: AddMembersDto) {
-    const result = await this.contactGroupService.addMembers(id, dto.contactIds);
+  async addMembers(
+    @Param('id') id: string,
+    @Body() dto: AddMembersDto,
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    const result = await this.contactGroupService.addMembers(id, dto.contactIds, apiKey);
     return { success: true, ...result };
   }
 
@@ -146,8 +165,12 @@ export class ContactGroupController {
   @ApiParam({ name: 'id', description: 'Group ID' })
   @ApiParam({ name: 'memberId', description: 'Member ID (bukan Contact ID)' })
   @ApiResponse({ status: 204, description: 'Anggota berhasil dihapus dari group' })
-  async removeMember(@Param('id') id: string, @Param('memberId') memberId: string) {
-    await this.contactGroupService.removeMember(id, memberId);
+  async removeMember(
+    @Param('id') id: string,
+    @Param('memberId') memberId: string,
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    await this.contactGroupService.removeMember(id, memberId, apiKey);
   }
 
   @Post(':id/blast')
@@ -157,13 +180,21 @@ export class ContactGroupController {
   @ApiBody({ type: BlastMessageDto })
   @ApiResponse({ status: 202, description: 'Blast diterima dan sedang diproses' })
   @ApiResponse({ status: 400, description: 'Session tidak aktif atau group kosong' })
-  async blast(@Param('id') id: string, @Body() dto: BlastMessageDto) {
+  async blast(
+    @Param('id') id: string,
+    @Body() dto: BlastMessageDto,
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    // Pastikan user memiliki akses ke sesi ini
+    await this.sessionService.findOne(dto.sessionId, apiKey);
+
     const engine = this.sessionService.getEngine(dto.sessionId);
     if (!engine) {
       throw new BadRequestException(`Sesi "${dto.sessionId}" tidak ditemukan atau belum READY. Pastikan sesi WhatsApp sudah terhubung.`);
     }
 
-    const members = await this.contactGroupService.getMemberPhones(id);
+    // Pastikan user memiliki akses ke group ini
+    const members = await this.contactGroupService.getMemberPhones(id, apiKey);
     if (members.length === 0) {
       throw new BadRequestException('Group tidak memiliki anggota. Tambahkan kontak ke group terlebih dahulu.');
     }

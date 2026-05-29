@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ContactGroup } from './entities/contact-group.entity';
 import { ContactGroupMember } from './entities/contact-group-member.entity';
 import { ImportedContact } from './entities/imported-contact.entity';
+import { ApiKey, ApiKeyRole } from '../auth/entities/api-key.entity';
 
 export interface ContactGroupWithCount extends ContactGroup {
   memberCount: number;
@@ -33,8 +34,12 @@ export class ContactGroupService {
   ) {}
 
   // ── List all groups with member count ──
-  async findAll(): Promise<ContactGroupWithCount[]> {
-    const groups = await this.groupRepository.find({ order: { name: 'ASC' } });
+  async findAll(apiKey?: ApiKey): Promise<ContactGroupWithCount[]> {
+    const where: any = {};
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN) {
+      where.ownerApiKeyId = apiKey.id;
+    }
+    const groups = await this.groupRepository.find({ where, order: { name: 'ASC' } });
 
     const withCounts: ContactGroupWithCount[] = await Promise.all(
       groups.map(async (group) => {
@@ -49,9 +54,12 @@ export class ContactGroupService {
   }
 
   // ── Get one group with all member details ──
-  async findOne(id: string): Promise<ContactGroupDetail> {
+  async findOne(id: string, apiKey?: ApiKey): Promise<ContactGroupDetail> {
     const group = await this.groupRepository.findOne({ where: { id } });
     if (!group) throw new NotFoundException(`Contact group ${id} not found`);
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id) {
+      throw new UnauthorizedException('You do not have access to this contact group');
+    }
 
     const members = await this.memberRepository.find({
       where: { groupId: id },
@@ -72,15 +80,22 @@ export class ContactGroupService {
   }
 
   // ── Create a new group ──
-  async create(name: string, description?: string): Promise<ContactGroup> {
-    const group = this.groupRepository.create({ name, description });
+  async create(name: string, description?: string, apiKey?: ApiKey): Promise<ContactGroup> {
+    const group = this.groupRepository.create({
+      name,
+      description,
+      ownerApiKeyId: apiKey ? apiKey.id : null,
+    });
     return this.groupRepository.save(group);
   }
 
   // ── Update group name / description ──
-  async update(id: string, name?: string, description?: string): Promise<ContactGroup> {
+  async update(id: string, name?: string, description?: string, apiKey?: ApiKey): Promise<ContactGroup> {
     const group = await this.groupRepository.findOne({ where: { id } });
     if (!group) throw new NotFoundException(`Contact group ${id} not found`);
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id) {
+      throw new UnauthorizedException('You do not have access to this contact group');
+    }
 
     if (name !== undefined) group.name = name;
     if (description !== undefined) group.description = description;
@@ -89,16 +104,22 @@ export class ContactGroupService {
   }
 
   // ── Delete a group (members rows deleted via CASCADE) ──
-  async delete(id: string): Promise<void> {
+  async delete(id: string, apiKey?: ApiKey): Promise<void> {
     const group = await this.groupRepository.findOne({ where: { id } });
     if (!group) throw new NotFoundException(`Contact group ${id} not found`);
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id) {
+      throw new UnauthorizedException('You do not have access to this contact group');
+    }
     await this.groupRepository.remove(group);
   }
 
   // ── Add contacts to a group ──
-  async addMembers(groupId: string, contactIds: string[]): Promise<{ added: number; skipped: number }> {
+  async addMembers(groupId: string, contactIds: string[], apiKey?: ApiKey): Promise<{ added: number; skipped: number }> {
     const group = await this.groupRepository.findOne({ where: { id: groupId } });
     if (!group) throw new NotFoundException(`Contact group ${groupId} not found`);
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id) {
+      throw new UnauthorizedException('You do not have access to this contact group');
+    }
 
     let added = 0;
     let skipped = 0;
@@ -111,7 +132,11 @@ export class ContactGroupService {
         skipped++;
         continue;
       }
-      const contact = await this.contactRepository.findOne({ where: { id: contactId } });
+      const contactWhere: any = { id: contactId };
+      if (apiKey && apiKey.role !== ApiKeyRole.ADMIN) {
+        contactWhere.ownerApiKeyId = apiKey.id;
+      }
+      const contact = await this.contactRepository.findOne({ where: contactWhere });
       if (!contact) {
         skipped++;
         continue;
@@ -125,7 +150,13 @@ export class ContactGroupService {
   }
 
   // ── Remove a member from a group ──
-  async removeMember(groupId: string, memberId: string): Promise<void> {
+  async removeMember(groupId: string, memberId: string, apiKey?: ApiKey): Promise<void> {
+    const group = await this.groupRepository.findOne({ where: { id: groupId } });
+    if (!group) throw new NotFoundException(`Contact group ${groupId} not found`);
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id) {
+      throw new UnauthorizedException('You do not have access to this contact group');
+    }
+
     const member = await this.memberRepository.findOne({
       where: { id: memberId, groupId },
     });
@@ -134,9 +165,12 @@ export class ContactGroupService {
   }
 
   // ── Get phone numbers of all members (for blast WA) ──
-  async getMemberPhones(groupId: string): Promise<Array<{ name: string; phone: string }>> {
+  async getMemberPhones(groupId: string, apiKey?: ApiKey): Promise<Array<{ name: string; phone: string }>> {
     const group = await this.groupRepository.findOne({ where: { id: groupId } });
     if (!group) throw new NotFoundException(`Contact group ${groupId} not found`);
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id) {
+      throw new UnauthorizedException('You do not have access to this contact group');
+    }
 
     const members = await this.memberRepository.find({
       where: { groupId },

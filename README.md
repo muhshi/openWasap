@@ -301,6 +301,9 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 ## 📝 Changelog
 
 ### [2026-05-29]
+- **Fitur Sandbox Multi-Tenancy (Isolasi Data Eksplisit)**: Menambahkan kolom `ownerApiKeyId` ke entitas **Sessions**, **Imported Contacts**, dan **Contact Groups** untuk membatasi akses data. Setiap user (berdasarkan API Key operator/viewer yang login) kini hanya dapat melihat, membuat, mengelola, dan mem-blast sesi/kontak/grup miliknya sendiri secara privat. Peran `ADMIN` tetap memiliki akses global penuh.
+- **Dukungan Database MySQL & Dependensi**: Menginstal paket driver `mysql2` untuk memfasilitasi komunikasi backend NestJS dengan database MySQL secara native.
+- **Konfigurasi Deployment Docker Production**: Menyediakan file `docker-compose.prod.yml` khusus production dan file dokumentasi panduan deployment `docker-setting.md` siap pakai untuk mempermudah deploy di Ubuntu Server dengan dukungan koneksi ke database MySQL eksternal dan perutean proxy internal Nginx.
 - **Pembaruan Fitur Blast WA Personal Terpadu (Unified Blast WA Modal)**: Mengintegrasikan dialog pengiriman pesan massal sehingga mendukung pengiriman ke kontak-kontak yang dipilih via checkbox, maupun ke grup sistem tertentu dari satu modal yang sama. Ditambahkan pula progress bar pengiriman real-time untuk pemantauan status pengiriman ke kontak individual.
 - **Fitur Hapus Massal Kontak Terpilih (Bulk Delete)**: Menambahkan fungsionalitas untuk menghapus banyak kontak sekaligus yang dipilih melalui checkbox dengan konfirmasi keamanan sebelum eksekusi.
 - **Refactor Contact Page**: Hapus tab auto-sync kontak WhatsApp yang menyebabkan loading berat saat halaman dibuka. Halaman kontak kini hanya menampilkan kontak yang diimport dari database lokal.

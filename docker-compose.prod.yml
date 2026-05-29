@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # ===== CORE: OpenWA Backend API =====
+  openwa:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openwa-api
+    restart: unless-stopped
+    ports:
+      - "${API_PORT:-2785}:2785"
+    expose:
+      - "2785"
+    environment:
+      # Core settings
+      - NODE_ENV=production
+      - PORT=2785
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Database connection (mapped to MySQL)
+      - DATABASE_TYPE=mysql
+      - DATABASE_HOST=${DATABASE_HOST:-mysql}
+      - DATABASE_PORT=${DATABASE_PORT:-3306}
+      - DATABASE_NAME=${DATABASE_NAME:-openwa}
+      - DATABASE_USERNAME=${DATABASE_USERNAME:-openwa}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-openwa}
+      - DATABASE_SYNCHRONIZE=${DATABASE_SYNCHRONIZE:-true} # Auto-create/alter tables safely
+      # WA Engine configuration
+      - ENGINE_TYPE=whatsapp-web.js
+      - SESSION_DATA_PATH=/app/data/sessions
+      - PUPPETEER_HEADLESS=true
+      - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu
+      # Local Storage
+      - STORAGE_TYPE=local
+      - STORAGE_LOCAL_PATH=/app/data/media
+      - PLUGINS_ENABLED=true
+      - PLUGINS_DIR=/app/data/plugins
+    volumes:
+      - openwa-prod-data:/app/data
+    networks:
+      - openwa-net
+      - mysql-net
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:2785/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===== CORE: Dashboard Frontend (nginx serving static React app) =====
+  openwa-dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: openwa-dashboard
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-2886}:80"
+    depends_on:
+      openwa:
+        condition: service_healthy
+    networks:
+      - openwa-net
+
+volumes:
+  openwa-prod-data:
+    driver: local
+
+networks:
+  openwa-net:
+    name: openwa-prod-network
+  # External network connection to access your existing MySQL container
+  mysql-net:
+    name: ${EXTERNAL_NETWORK:-mysql-network}
+    external: true
