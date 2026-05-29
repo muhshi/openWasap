@@ -1,35 +1,55 @@
-# OpenWA - Dockerfile
+# OpenWA - Dockerfile (optimized)
 # Multi-stage build for production-ready image
 
 # ===== Stage 1: Builder =====
+# Use slim image; build tools only needed here
 FROM node:22-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
+# Install build tools required by native modules (e.g. sqlite3, whatsapp-web.js)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy package files
-COPY package*.json ./
+# Copy ONLY lock + manifest — layer cached until these files change
+COPY package.json package-lock.json ./
 
-# Install all dependencies (including devDependencies for build)
-RUN npm ci
+# Skip the `postinstall` script (it would try to install the dashboard too)
+RUN npm ci --ignore-scripts
 
-# Copy source code
+# Copy source and build
 COPY . .
-
-# Build the application
 RUN npm run build
 
-# ===== Stage 2: Production =====
+
+# ===== Stage 2: Production dependencies =====
+# Separate stage so prod-dep layer is cached independently of source changes
+FROM node:22-slim AS deps
+
+WORKDIR /app
+
+# Same build tools needed for native production modules
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json ./
+
+# Install production deps only — heavily cached because package.json rarely changes
+RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+
+
+# ===== Stage 3: Production runtime =====
 FROM node:22-slim AS production
 
-# Install Chrome/Chromium and required dependencies
-RUN apt-get update && apt-get install -y \
+# Install Chromium + runtime libraries in one layer.
+# This layer is HUGE (~500 MB) but cached unless the base image changes.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     fonts-liberation \
     libappindicator3-1 \
@@ -51,39 +71,29 @@ RUN apt-get update && apt-get install -y \
     dumb-init \
     && rm -rf /var/lib/apt/lists/*
 
-# Set Chrome executable path for Puppeteer
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV NODE_ENV=production
 
 # Create app user for security
 RUN groupadd -r openwa && useradd -r -g openwa openwa
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Pull prod node_modules from dedicated deps stage (cached)
+COPY --from=deps /app/node_modules ./node_modules
 
-# Install production dependencies only
-RUN npm ci --omit=dev && npm cache clean --force
-
-# Copy built application from builder stage
+# Pull compiled application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Create data directories with proper permissions
-RUN mkdir -p ./data/sessions ./data/media && \
-    chown -R openwa:openwa /app
+# Create data directories and set ownership ONLY on data dir, not the whole /app
+RUN mkdir -p /app/data/sessions /app/data/media /app/data/plugins \
+    && chown -R openwa:openwa /app/data
 
-# Note: Running as root to allow Docker socket access for orchestration
-# For production with stricter security, consider using a Docker socket proxy
-# USER openwa
-
-# Expose port
 EXPOSE 2785
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD node -e "require('http').get('http://localhost:2785/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
 
-# Start with dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/main"]

@@ -2,22 +2,21 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy ONLY package files first — layer cached until these change
+COPY package.json package-lock.json ./
 
-# Install dependencies
+# Install all dependencies
 RUN npm ci --legacy-peer-deps
 
-# Copy source code
+# Copy source code and build
 COPY . .
-
-# Build the app
 RUN npm run build
 
-# Production stage with nginx
+
+# Production stage: lightweight nginx serving static files only
 FROM nginx:alpine
 
-# Copy built files
+# Copy built static assets
 COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy nginx config

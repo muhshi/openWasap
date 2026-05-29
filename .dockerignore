@@ -15,6 +15,9 @@ coverage/
 # Data files (sessions, media, database)
 data/
 
+# Dashboard (has its own Dockerfile + build context — not needed by backend)
+dashboard/
+
 # IDE
 .idea/
 .vscode/

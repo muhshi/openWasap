@@ -22,7 +22,7 @@ services:
       - DATABASE_NAME=${DATABASE_NAME:-openwa}
       - DATABASE_USERNAME=${DATABASE_USERNAME:-openwa}
       - DATABASE_PASSWORD=${DATABASE_PASSWORD:-openwa}
-      - DATABASE_SYNCHRONIZE=${DATABASE_SYNCHRONIZE:-true} # Auto-create/alter tables safely
+      - DATABASE_SYNCHRONIZE=${DATABASE_SYNCHRONIZE:-true}
       # WA Engine configuration
       - ENGINE_TYPE=whatsapp-web.js
       - SESSION_DATA_PATH=/app/data/sessions
