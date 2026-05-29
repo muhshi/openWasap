@@ -1,4 +1,27 @@
 services:
+  # ===== INIT: Create database if not exists =====
+  db-init:
+    image: postgres:alpine
+    container_name: openwa-db-init
+    restart: "no"
+    networks:
+      - postgres-net
+    environment:
+      - PGPASSWORD=${DATABASE_PASSWORD}
+    command: >
+      sh -c "
+        echo 'Waiting for PostgreSQL...' &&
+        until pg_isready -h ${DATABASE_HOST:-10.133.21.24} -p ${DATABASE_PORT:-5433} -U ${DATABASE_USERNAME:-bpsdemak}; do
+          sleep 2;
+        done &&
+        echo 'PostgreSQL is ready.' &&
+        psql -h ${DATABASE_HOST:-10.133.21.24} -p ${DATABASE_PORT:-5433} -U ${DATABASE_USERNAME:-bpsdemak} -lqt |
+        cut -d '|' -f1 | grep -qw '${DATABASE_NAME:-openwa}' ||
+        psql -h ${DATABASE_HOST:-10.133.21.24} -p ${DATABASE_PORT:-5433} -U ${DATABASE_USERNAME:-bpsdemak}
+        -c 'CREATE DATABASE \"${DATABASE_NAME:-openwa}\";' &&
+        echo 'Database ready.'
+      "
+
   # ===== CORE: OpenWA Backend API =====
   openwa:
     build:
@@ -6,6 +29,9 @@ services:
       dockerfile: Dockerfile
     container_name: openwa-api
     restart: unless-stopped
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
     ports:
       - "${API_PORT:-2785}:2785"
     expose:
