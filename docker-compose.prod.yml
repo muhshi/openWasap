@@ -15,13 +15,13 @@ services:
       - NODE_ENV=production
       - PORT=2785
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      # Database connection (mapped to MySQL)
-      - DATABASE_TYPE=mysql
-      - DATABASE_HOST=${DATABASE_HOST:-mysql}
-      - DATABASE_PORT=${DATABASE_PORT:-3306}
+      # Database connection (PostgreSQL)
+      - DATABASE_TYPE=postgres
+      - DATABASE_HOST=${DATABASE_HOST:-10.133.21.24}
+      - DATABASE_PORT=${DATABASE_PORT:-5433}
       - DATABASE_NAME=${DATABASE_NAME:-openwa}
-      - DATABASE_USERNAME=${DATABASE_USERNAME:-openwa}
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-openwa}
+      - DATABASE_USERNAME=${DATABASE_USERNAME:-bpsdemak}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
       - DATABASE_SYNCHRONIZE=${DATABASE_SYNCHRONIZE:-true}
       # WA Engine configuration
       - ENGINE_TYPE=whatsapp-web.js
@@ -37,7 +37,7 @@ services:
       - openwa-prod-data:/app/data
     networks:
       - openwa-net
-      - mysql-net
+      - postgres-net
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:2785/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
       interval: 30s
@@ -67,7 +67,7 @@ volumes:
 networks:
   openwa-net:
     name: openwa-prod-network
-  # External network connection to access your existing MySQL container
-  mysql-net:
-    name: ${EXTERNAL_NETWORK:-mysql-network}
+  # External network connection to access your existing PostgreSQL container
+  postgres-net:
+    name: ${EXTERNAL_NETWORK:-postgres-stack_ai_net}
     external: true
