@@ -300,6 +300,17 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 
 ## 📝 Changelog
 
+### [2026-05-29]
+- **Refactor Contact Page**: Hapus tab auto-sync kontak WhatsApp yang menyebabkan loading berat saat halaman dibuka. Halaman kontak kini hanya menampilkan kontak yang diimport dari database lokal.
+- **Hapus Tombol "Clear Imported"**: Tombol yang berbahaya (bisa hapus semua kontak sekaligus) dihapus dari UI. Penghapusan kontak tetap bisa dilakukan satu per satu via tombol ❌ di baris tabel.
+- **Fitur System Contact Group**: Menambahkan konsep "Group" baru yang tersimpan di database lokal (bukan WhatsApp Group). Group ini digunakan untuk mengelompokkan kontak untuk keperluan blast WA personal.
+  - CRUD Group: buat, edit nama/deskripsi, hapus group
+  - Manajemen Anggota: tambah/hapus kontak dari group dengan UI searchable checkbox
+  - Backend: Entity `ContactGroup` & `ContactGroupMember`, Service, dan REST Controller (`/contact-groups`)
+- **Fitur Blast WA Personal**: Kirim pesan WhatsApp 1-1 (personal/private) ke semua anggota group sekaligus melalui sesi WA aktif. Mendukung variabel `{{name}}` untuk personalisasi nama penerima dan konfigurasi jeda antar pesan (default 3 detik).
+- **Hapus Seeder Data Hardcoded**: Hapus 54 data kontak default yang di-seed otomatis saat server pertama kali boot.
+- **Perbaikan Import**: Import kontak kini hanya menerima file Excel (.xlsx/.xls), tidak lagi CSV.
+
 ### [2026-05-26]
 - **Perbaikan DTO Grup**: Menambahkan dekorator class-validator pada DTO di `group.controller.ts` untuk mengatasi error 400 Bad Request.
 - **Fitur Konten Baru (Contacts Manager)**: Menambahkan halaman Kontak terpadu di React Dashboard yang mendukung import kontak dari file CSV/Excel (.xlsx) secara client-side, standardisasi nomor telepon otomatis (`08` -> `62`), serta memicu pembuatan grup di WhatsApp langsung dari daftar kontak yang dipilih.
