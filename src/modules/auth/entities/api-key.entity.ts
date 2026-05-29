@@ -28,19 +28,19 @@ export class ApiKey {
   })
   role: ApiKeyRole;
 
-  @Column({ type: 'simple-array', nullable: true })
+  @Column({ type: 'text', nullable: true })
   allowedIps: string[] | null;
 
-  @Column({ type: 'simple-array', nullable: true })
+  @Column({ type: 'text', nullable: true })
   allowedSessions: string[] | null;
 
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   expiresAt: Date | null;
 
-  @Column({ type: 'datetime', nullable: true })
+  @Column({ type: 'timestamptz', nullable: true })
   lastUsedAt: Date | null;
 
   @Column({ type: 'int', default: 0 })

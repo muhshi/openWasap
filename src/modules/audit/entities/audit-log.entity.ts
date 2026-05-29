@@ -75,9 +75,8 @@ export class AuditLog {
   @Column({ type: 'int', nullable: true })
   statusCode: number | null;
 
-  // The "main" database connection is always SQLite (boot config),
-  // so we use simple-json regardless of the user's data DB choice.
-  @Column({ type: 'simple-json', nullable: true })
+  // jsonb works on PostgreSQL; TypeORM falls back to json/text for other databases
+  @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, unknown> | null;
 
   @Column({ type: 'text', nullable: true })
