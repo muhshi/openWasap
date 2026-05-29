@@ -35,6 +35,35 @@ export interface ImportedContact {
   updatedAt?: string;
 }
 
+export interface ContactGroup {
+  id: string;
+  name: string;
+  description?: string;
+  memberCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContactGroupMember {
+  id: string;
+  contactId: string;
+  name: string;
+  phone: string;
+  createdAt: string;
+}
+
+export interface ContactGroupDetail extends Omit<ContactGroup, 'memberCount'> {
+  members: ContactGroupMember[];
+}
+
+export interface BlastResult {
+  accepted: boolean;
+  totalMembers: number;
+  sessionId: string;
+  groupId: string;
+  message: string;
+}
+
 export interface SessionStats {
   total: number;
   active: number;
@@ -223,6 +252,34 @@ export const importedContactApi = {
     }),
   delete: (id: string) => request<void>(`/contacts/imported/${id}`, { method: 'DELETE' }),
   deleteAll: () => request<void>('/contacts/imported', { method: 'DELETE' }),
+};
+
+export const contactGroupApi = {
+  list: () => request<ContactGroup[]>('/contact-groups'),
+  get: (id: string) => request<ContactGroupDetail>(`/contact-groups/${id}`),
+  create: (name: string, description?: string, contactIds?: string[]) =>
+    request<ContactGroupDetail>('/contact-groups', {
+      method: 'POST',
+      body: JSON.stringify({ name, description, contactIds }),
+    }),
+  update: (id: string, name?: string, description?: string) =>
+    request<ContactGroup>(`/contact-groups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, description }),
+    }),
+  delete: (id: string) => request<void>(`/contact-groups/${id}`, { method: 'DELETE' }),
+  addMembers: (id: string, contactIds: string[]) =>
+    request<{ success: boolean; added: number; skipped: number }>(`/contact-groups/${id}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ contactIds }),
+    }),
+  removeMember: (id: string, memberId: string) =>
+    request<void>(`/contact-groups/${id}/members/${memberId}`, { method: 'DELETE' }),
+  blast: (id: string, sessionId: string, message: string, delayMs?: number) =>
+    request<BlastResult>(`/contact-groups/${id}/blast`, {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, message, delayMs }),
+    }),
 };
 
 // =============================================================================

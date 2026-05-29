@@ -6,16 +6,20 @@ import {
   Users,
   Check,
   Loader2,
-  Filter,
   FileSpreadsheet,
   Plus,
-  RefreshCw,
-  X
+  X,
+  Trash2,
+  Edit2,
+  Send,
+  FolderOpen,
+  UserPlus,
+  ChevronRight,
+  ArrowLeft,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import Papa from 'papaparse';
-import { sessionApi, importedContactApi } from '../services/api';
-import type { Contact as ApiContact } from '../services/api';
+import { importedContactApi, contactGroupApi } from '../services/api';
+import type { ImportedContact, ContactGroup, ContactGroupDetail } from '../services/api';
 import { useSessionsQuery } from '../hooks/queries';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useRole } from '../hooks/useRole';
@@ -23,103 +27,101 @@ import { useToast } from '../components/Toast';
 import { PageHeader } from '../components/PageHeader';
 import './Contacts.css';
 
-interface DisplayContact {
-  id: string;
-  name: string;
-  phone: string;
-  source: 'whatsapp' | 'imported';
-  isMyContact?: boolean;
-  isBlocked?: boolean;
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-const DEFAULT_CONTACTS: DisplayContact[] = [
-  { id: 'default_6285727253827_0', name: 'AHMAD KASYIF SYAROF', phone: '6285727253827', source: 'imported' },
-  { id: 'default_6285848480751_1', name: 'AQIM LAKUMAL KIBRIYA', phone: '6285848480751', source: 'imported' },
-  { id: 'default_6282226416889_2', name: 'Hasan taufiq', phone: '6282226416889', source: 'imported' },
-  { id: 'default_6282310559106_3', name: 'Malikhatun Hidayah', phone: '6282310559106', source: 'imported' },
-  { id: 'default_6281225008906_4', name: 'AHMAD GHOZALI', phone: '6281225008906', source: 'imported' },
-  { id: 'default_62895352968314_5', name: 'Edi Susanto', phone: '62895352968314', source: 'imported' },
-  { id: 'default_628886615482_6', name: 'Muzaki Manaf', phone: '628886615482', source: 'imported' },
-  { id: 'default_6285326024321_7', name: 'Nur Hidayat', phone: '6285326024321', source: 'imported' },
-  { id: 'default_6289508592098_8', name: 'Ahmad Baihaqi', phone: '6289508592098', source: 'imported' },
-  { id: 'default_6282227182516_9', name: 'Fahmi Ainun Najib', phone: '6282227182516', source: 'imported' },
-  { id: 'default_6283865650017_10', name: 'IIN ELIVA', phone: '6283865650017', source: 'imported' },
-  { id: 'default_6285228199040_11', name: 'NUR MA\'RIFAH', phone: '6285228199040', source: 'imported' },
-  { id: 'default_6282328093023_12', name: 'LAILA LATIFATUL MUNAWAROH', phone: '6282328093023', source: 'imported' },
-  { id: 'default_6288901293973_13', name: 'Felasuf Al Zaki', phone: '6288901293973', source: 'imported' },
-  { id: 'default_628982375060_14', name: 'Muhammad ulfi Sholeh', phone: '628982375060', source: 'imported' },
-  { id: 'default_6288215754636_15', name: 'Atik aulia rohmasani', phone: '6288215754636', source: 'imported' },
-  { id: 'default_6289630548046_16', name: 'Mina Ulyatul Umroh', phone: '6289630548046', source: 'imported' },
-  { id: 'default_62859165961517_17', name: 'Nurun Nafiqoh', phone: '62859165961517', source: 'imported' },
-  { id: 'default_6289519688567_18', name: 'Aminatus Soimah', phone: '6289519688567', source: 'imported' },
-  { id: 'default_6287766622597_19', name: 'Mohamad Ihwan Zamroni', phone: '6287766622597', source: 'imported' },
-  { id: 'default_6281297455382_20', name: 'Muhammad Izzuddin Fikri', phone: '6281297455382', source: 'imported' },
-  { id: 'default_6282236177014_21', name: 'IMRON ROSYADI', phone: '6282236177014', source: 'imported' },
-  { id: 'default_6282223664373_22', name: 'Kholisotun Naimah', phone: '6282223664373', source: 'imported' },
-  { id: 'default_6282134625933_23', name: 'Nur Fatimayasari', phone: '6282134625933', source: 'imported' },
-  { id: 'default_62895360596233_24', name: 'Satria Tri Astutik', phone: '62895360596233', source: 'imported' },
-  { id: 'default_6282226416524_25', name: 'Azifatul Fatimah', phone: '6282226416524', source: 'imported' },
-  { id: 'default_6281390153810_26', name: 'Faisal Basir', phone: '6281390153810', source: 'imported' },
-  { id: 'default_6281328767425_27', name: 'ALI RIDHO', phone: '6281328767425', source: 'imported' },
-  { id: 'default_6285293033540_28', name: 'Adis Rohmatullah', phone: '6285293033540', source: 'imported' },
-  { id: 'default_628871350561_29', name: 'Dwi mustika melati', phone: '628871350561', source: 'imported' },
-  { id: 'default_6282310191286_30', name: 'Nur Laili wakhidah', phone: '6282310191286', source: 'imported' },
-  { id: 'default_6285290652076_31', name: 'UBAIDILLAH', phone: '6285290652076', source: 'imported' },
-  { id: 'default_6281225135321_32', name: 'MUHAMAD LATIF', phone: '6281225135321', source: 'imported' },
-  { id: 'default_6285735169571_33', name: 'Muhammad Rifqi Mubarok', phone: '6285735169571', source: 'imported' },
-  { id: 'default_6281808040549_34', name: 'Nurma Amaliya', phone: '6281808040549', source: 'imported' },
-  { id: 'default_6281393546261_35', name: 'Agus Ubaidillah', phone: '6281393546261', source: 'imported' },
-  { id: 'default_6281513898641_36', name: 'Himmatul Cahyani', phone: '6281513898641', source: 'imported' },
-  { id: 'default_628895742401_37', name: 'Inayah', phone: '628895742401', source: 'imported' },
-  { id: 'default_6289666979475_38', name: 'ULIS SAKHOWATI', phone: '6289666979475', source: 'imported' },
-  { id: 'default_6282136428106_39', name: 'muhibbin', phone: '6282136428106', source: 'imported' },
-  { id: 'default_6282248969719_40', name: 'Roikhatul Miskiyah', phone: '6282248969719', source: 'imported' },
-  { id: 'default_6282131034191_41', name: 'anissaur rohmah', phone: '6282131034191', source: 'imported' },
-  { id: 'default_6285326851881_42', name: 'AZIZATUS SAB\'AH', phone: '6285326851881', source: 'imported' },
-  { id: 'default_628997346166_43', name: 'Inna Naili Izzatul Laila', phone: '628997346166', source: 'imported' },
-  { id: 'default_6281334660013_44', name: 'KHOTIMUL MANAN', phone: '6281334660013', source: 'imported' },
-  { id: 'default_6282390611565_45', name: 'MUH. ADIB DAROJAD', phone: '6282390611565', source: 'imported' },
-  { id: 'default_62895800022987_46', name: 'Wachidatul Fitriyah', phone: '62895800022987', source: 'imported' },
-  { id: 'default_6281912892273_47', name: 'DZIKRULLOH', phone: '6281912892273', source: 'imported' },
-  { id: 'default_6283122591676_48', name: 'FATKHUL AFIF', phone: '6283122591676', source: 'imported' },
-  { id: 'default_6282324157282_49', name: 'Ifa Nurliana', phone: '6282324157282', source: 'imported' },
-  { id: 'default_6285290473613_50', name: 'Mustamiroh', phone: '6285290473613', source: 'imported' },
-  { id: 'default_6283850580551_51', name: 'PUTRI SUCI ULYANI', phone: '6283850580551', source: 'imported' },
-  { id: 'default_6285238486946_52', name: 'Nur ikhsan', phone: '6285238486946', source: 'imported' },
-  { id: 'default_6288216691735_53', name: 'Sukamad', phone: '6288216691735', source: 'imported' }
-];
+type MainTab = 'contacts' | 'groups';
+type GroupView = 'list' | 'detail';
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export function Contacts() {
   const { t } = useTranslation();
   useDocumentTitle(t('contacts.title'));
   const { canWrite } = useRole();
   const toast = useToast();
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sesi
+  // Sessions
   const { data: allSessions = [], isLoading: loadingSessions } = useSessionsQuery();
   const sessions = allSessions.filter(s => s.status === 'ready');
   const [selectedSession, setSelectedSession] = useState('');
 
-  // Kontak
-  const [whatsappContacts, setWhatsappContacts] = useState<DisplayContact[]>([]);
-  
-  const [importedContacts, setImportedContacts] = useState<DisplayContact[]>([]);
+  // Main tab: Contacts | Groups
+  const [mainTab, setMainTab] = useState<MainTab>('contacts');
+
+  // ── Contacts State ──────────────────────────────────────────────────────────
+
+  const [importedContacts, setImportedContacts] = useState<ImportedContact[]>([]);
+  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]); // used for adding to groups
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Add Contact modal
+  const [isAddContactOpen, setIsAddContactOpen] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactPhone, setNewContactPhone] = useState('');
+
+  // ── Groups State ────────────────────────────────────────────────────────────
+
+  const [groups, setGroups] = useState<ContactGroup[]>([]);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(false);
+  const [groupView, setGroupView] = useState<GroupView>('list');
+  const [activeGroup, setActiveGroup] = useState<ContactGroupDetail | null>(null);
+  const [isLoadingGroupDetail, setIsLoadingGroupDetail] = useState(false);
+
+  // Create Group modal
+  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupDesc, setNewGroupDesc] = useState('');
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+
+  // Edit Group modal
+  const [isEditGroupOpen, setIsEditGroupOpen] = useState(false);
+  const [editGroupName, setEditGroupName] = useState('');
+  const [editGroupDesc, setEditGroupDesc] = useState('');
+  const [isSavingGroup, setIsSavingGroup] = useState(false);
+
+  // Add Member modal (within group detail)
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [isAddingMembers, setIsAddingMembers] = useState(false);
+
+  // Blast WA modal
+  const [isBlastOpen, setIsBlastOpen] = useState(false);
+  const [blastMessage, setBlastMessage] = useState('');
+  const [blastDelay, setBlastDelay] = useState(3000);
+  const [isBlasting, setIsBlasting] = useState(false);
+
+  // ── Load Data ───────────────────────────────────────────────────────────────
 
   const loadImportedContacts = useCallback(async () => {
+    setIsLoadingContacts(true);
     try {
       const data = await importedContactApi.list();
-      const mapped: DisplayContact[] = data.map(c => ({
-        id: c.id,
-        name: c.name,
-        phone: c.phone,
-        source: 'imported'
-      }));
-      setImportedContacts(mapped);
+      setImportedContacts(data);
     } catch (err) {
-      console.error('Failed to load imported contacts from database:', err);
+      console.error('Failed to load imported contacts:', err);
       toast.error('Gagal mengambil data kontak dari database.');
+    } finally {
+      setIsLoadingContacts(false);
+    }
+  }, [toast]);
+
+  const loadGroups = useCallback(async () => {
+    setIsLoadingGroups(true);
+    try {
+      const data = await contactGroupApi.list();
+      setGroups(data);
+    } catch (err) {
+      console.error('Failed to load groups:', err);
+      toast.error('Gagal mengambil data group.');
+    } finally {
+      setIsLoadingGroups(false);
     }
   }, [toast]);
 
@@ -127,77 +129,25 @@ export function Contacts() {
     void loadImportedContacts();
   }, [loadImportedContacts]);
 
-  const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'imported' | 'whatsapp'>('imported');
-
-  // Status Load/Loading
-  const [isLoadingContacts, setIsLoadingContacts] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
-
-  // Pembuatan Grup
-  const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
-  const [groupName, setGroupName] = useState('');
-  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
-
-  // Penambahan Kontak Secara Manual
-  const [isAddContactOpen, setIsAddContactOpen] = useState(false);
-  const [newContactName, setNewContactName] = useState('');
-  const [newContactPhone, setNewContactPhone] = useState('');
-
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-
-  // Reset page to 1 when filters or query change
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, activeTab]);
+    if (mainTab === 'groups') {
+      void loadGroups();
+    }
+  }, [mainTab, loadGroups]);
 
-  // Set default session if available
   useEffect(() => {
     if (sessions.length > 0 && !selectedSession) {
       setSelectedSession(sessions[0].id);
     }
   }, [sessions, selectedSession]);
 
-  // Load WhatsApp contacts when session changes
-  const loadWhatsappContacts = useCallback(async (sessionId: string) => {
-    if (!sessionId) {
-      setWhatsappContacts([]);
-      return;
-    }
-
-    setIsLoadingContacts(true);
-    try {
-      const apiContacts = await sessionApi.getContacts(sessionId);
-      const mapped: DisplayContact[] = apiContacts.map((c: ApiContact) => ({
-        id: c.id,
-        name: c.name || c.pushName || t('common.unknownError'),
-        phone: c.number,
-        source: 'whatsapp',
-        isMyContact: c.isMyContact,
-        isBlocked: c.isBlocked
-      }));
-      setWhatsappContacts(mapped);
-    } catch (err) {
-      console.error(err);
-      toast.error(t('contacts.toasts.loadFailed', { error: err instanceof Error ? err.message : '' }));
-      setWhatsappContacts([]);
-    } finally {
-      setIsLoadingContacts(false);
-    }
-  }, [t, toast]);
-
+  // Reset pagination when search changes
   useEffect(() => {
-    if (selectedSession) {
-      void loadWhatsappContacts(selectedSession);
-    } else {
-      setWhatsappContacts([]);
-    }
-  }, [selectedSession, loadWhatsappContacts]);
+    setCurrentPage(1);
+  }, [searchQuery]);
 
-  // Pembersihan nomor telepon (e.g. 08xx -> 628xx)
+  // ── Phone helpers ───────────────────────────────────────────────────────────
+
   const cleanPhoneNumber = (num: string): string => {
     let clean = num.replace(/[^0-9]/g, '');
     while (clean.startsWith('0')) {
@@ -209,7 +159,6 @@ export function Contacts() {
     return clean;
   };
 
-  // Mencari nilai kolom berdasarkan variasi nama header
   const findColumnValue = (row: Record<string, unknown>, keys: string[]): string => {
     const rowKeys = Object.keys(row);
     for (const k of keys) {
@@ -219,27 +168,22 @@ export function Contacts() {
     return '';
   };
 
-  // Parser data kontak dari baris hasil import
-  const parseRows = (rows: Record<string, unknown>[]): DisplayContact[] => {
-    const parsed: DisplayContact[] = [];
-    rows.forEach((row, index) => {
+  const parseRows = (rows: Record<string, unknown>[]): { name: string; phone: string }[] => {
+    const parsed: { name: string; phone: string }[] = [];
+    rows.forEach(row => {
       const name = findColumnValue(row, ['name', 'nama', 'full name', 'nama lengkap', 'display name', 'petugas']);
       const phoneRaw = findColumnValue(row, ['phone', 'phone number', 'no hp', 'number', 'no telepon', 'no telp', 'telepon', 'whatsapp', 'telp']);
       const phone = cleanPhoneNumber(phoneRaw);
-
       if (phone) {
-        parsed.push({
-          id: `imported_${phone}_${index}`,
-          name: name || `Contact ${phone}`,
-          phone,
-          source: 'imported'
-        });
+        parsed.push({ name: name || `Contact ${phone}`, phone });
       }
     });
     return parsed;
   };
 
-  const importContactsToDatabase = async (parsed: DisplayContact[]) => {
+  // ── Import Excel ────────────────────────────────────────────────────────────
+
+  const importContactsToDatabase = async (parsed: { name: string; phone: string }[]) => {
     setIsLoadingContacts(true);
     let successCount = 0;
     try {
@@ -261,71 +205,36 @@ export function Contacts() {
     }
   };
 
-  // Menangani file CSV/Excel
   const processFile = (file: File) => {
-    const fileExtension = file.name.split('.').pop()?.toLowerCase();
-
-    if (fileExtension === 'csv') {
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: async (results) => {
-          if (results.errors.length > 0) {
-            toast.error(t('contacts.toasts.importFailed', { error: results.errors[0].message }));
-            return;
-          }
-          const parsed = parseRows(results.data as Record<string, unknown>[]);
-          if (parsed.length > 0) {
-            await importContactsToDatabase(parsed);
-          } else {
-            toast.error(t('contacts.toasts.importFailed', { error: 'No contacts found or headers mismatched.' }));
-          }
-        },
-        error: (err) => {
-          toast.error(t('contacts.toasts.importFailed', { error: err.message }));
-        }
-      });
-    } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext === 'xlsx' || ext === 'xls') {
       const reader = new FileReader();
       reader.onload = async (event) => {
         try {
           const data = new Uint8Array(event.target?.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: 'array' });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
+          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
           const json = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
           const parsed = parseRows(json);
-
           if (parsed.length > 0) {
             await importContactsToDatabase(parsed);
           } else {
-            toast.error(t('contacts.toasts.importFailed', { error: 'No contacts found or headers mismatched.' }));
+            toast.error('Tidak ada kontak ditemukan. Pastikan header kolom sudah benar (Name, Phone).');
           }
         } catch (err) {
-          toast.error(t('contacts.toasts.importFailed', { error: err instanceof Error ? err.message : '' }));
+          toast.error(`Gagal memproses file: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
-      };
-      reader.onerror = () => {
-        toast.error(t('contacts.toasts.importFailed', { error: 'FileReader error' }));
       };
       reader.readAsArrayBuffer(file);
     } else {
-      toast.error('Unsupported file type. Please upload a CSV or Excel (.xlsx/.xls) file.');
+      toast.error('Hanya file Excel (.xlsx, .xls) yang didukung.');
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) processFile(file);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragOver(false);
+    e.target.value = '';
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -335,169 +244,211 @@ export function Contacts() {
     if (file) processFile(file);
   };
 
-  const handleTriggerUpload = () => {
-    fileInputRef.current?.click();
+  // ── Download Excel Template ─────────────────────────────────────────────────
+
+  const downloadExcelTemplate = () => {
+    try {
+      const data = [
+        { 'Name': 'Contoh Nama', 'Phone': '628123456789' },
+        { 'Name': 'Ahmad Fulan', 'Phone': '628987654321' },
+      ];
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Contacts');
+      XLSX.writeFile(workbook, 'contacts_template.xlsx');
+      toast.success('Template Excel berhasil diunduh.');
+    } catch (err) {
+      console.error(err);
+      toast.error('Gagal membuat template Excel.');
+    }
   };
 
-  // Pilih sumber kontak berdasarkan tab aktif
-  const sourceContacts = activeTab === 'imported' ? importedContacts : whatsappContacts;
+  // ── Contact Selection (for adding to group) ─────────────────────────────────
 
-  // Filter kontak berdasarkan pencarian
-  const filteredContacts = sourceContacts.filter(c => {
-    return (
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone.includes(searchQuery)
+  const toggleSelectContact = (id: string) => {
+    setSelectedContactIds(prev =>
+      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
     );
-  });
+  };
 
-  // Kalkulasi pagination
+  const filteredContacts = importedContacts.filter(c =>
+    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    c.phone.includes(searchQuery)
+  );
   const totalPages = Math.ceil(filteredContacts.length / pageSize);
   const paginatedContacts = filteredContacts.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
-
-  // Pemilihan kontak
-  const toggleSelectContact = (phone: string) => {
-    setSelectedContacts(prev =>
-      prev.includes(phone) ? prev.filter(p => p !== phone) : [...prev, phone]
-    );
-  };
+  const isAllSelected =
+    paginatedContacts.length > 0 &&
+    paginatedContacts.every(c => selectedContactIds.includes(c.id));
 
   const toggleSelectAll = () => {
-    const filteredPhones = filteredContacts.map(c => c.phone);
-    const allSelected = filteredPhones.every(phone => selectedContacts.includes(phone));
-
-    if (allSelected) {
-      setSelectedContacts(prev => prev.filter(phone => !filteredPhones.includes(phone)));
+    const ids = paginatedContacts.map(c => c.id);
+    if (isAllSelected) {
+      setSelectedContactIds(prev => prev.filter(id => !ids.includes(id)));
     } else {
-      setSelectedContacts(prev => {
-        const union = new Set([...prev, ...filteredPhones]);
-        return Array.from(union);
-      });
+      setSelectedContactIds(prev => Array.from(new Set([...prev, ...ids])));
     }
   };
 
-  const handleCreateGroupSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedSession || !groupName || selectedContacts.length === 0) return;
+  // ── Delete Contact ──────────────────────────────────────────────────────────
 
-    setIsCreatingGroup(true);
-    // Format participants: tambahkan @c.us jika belum ada
-    const formattedParticipants = selectedContacts.map(phone =>
-      phone.includes('@') ? phone : `${phone}@c.us`
-    );
-
+  const deleteContact = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm('Hapus kontak ini secara permanen dari database?')) return;
     try {
-      const res = await sessionApi.createGroup(selectedSession, groupName, formattedParticipants);
-      toast.success(t('contacts.toasts.createSuccess', { name: res.name }));
-      setGroupName('');
-      setSelectedContacts([]);
-      setIsCreateGroupOpen(false);
-      // Reload groups in active server instances if needed
+      await importedContactApi.delete(id);
+      setImportedContacts(prev => prev.filter(c => c.id !== id));
+      setSelectedContactIds(prev => prev.filter(p => p !== id));
+      toast.info('Kontak berhasil dihapus.');
     } catch (err) {
-      toast.error(t('contacts.toasts.createFailed', { error: err instanceof Error ? err.message : '' }));
+      console.error(err);
+      toast.error('Gagal menghapus kontak.');
+    }
+  };
+
+  // ── Add Contact Manual ──────────────────────────────────────────────────────
+
+  const handleAddContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const phone = cleanPhoneNumber(newContactPhone);
+    if (!phone) { toast.error('Format nomor HP tidak valid.'); return; }
+    try {
+      const created = await importedContactApi.create(newContactName.trim(), phone);
+      setImportedContacts(prev => {
+        const filtered = prev.filter(c => c.phone !== phone);
+        return [...filtered, created];
+      });
+      toast.success('Kontak berhasil disimpan.');
+      setNewContactName(''); setNewContactPhone(''); setIsAddContactOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error('Gagal menyimpan kontak.');
+    }
+  };
+
+  // ── Group CRUD ──────────────────────────────────────────────────────────────
+
+  const handleCreateGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsCreatingGroup(true);
+    try {
+      const group = await contactGroupApi.create(newGroupName.trim(), newGroupDesc.trim() || undefined);
+      setGroups(prev => [...prev, { ...group, memberCount: group.members.length }]);
+      toast.success(`Group "${group.name}" berhasil dibuat.`);
+      setNewGroupName(''); setNewGroupDesc(''); setIsCreateGroupOpen(false);
+    } catch (err) {
+      toast.error(`Gagal membuat group: ${err instanceof Error ? err.message : ''}`);
     } finally {
       setIsCreatingGroup(false);
     }
   };
 
-  const clearImported = async () => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus semua kontak secara permanen dari database?')) {
-      try {
-        await importedContactApi.deleteAll();
-        setImportedContacts([]);
-        setSelectedContacts([]);
-        toast.info('Semua kontak berhasil dihapus dari database.');
-      } catch (err) {
-        console.error(err);
-        toast.error('Gagal menghapus semua kontak dari database.');
-      }
+  const openGroupDetail = async (groupId: string) => {
+    setIsLoadingGroupDetail(true);
+    setGroupView('detail');
+    try {
+      const detail = await contactGroupApi.get(groupId);
+      setActiveGroup(detail);
+    } catch (err) {
+      toast.error('Gagal memuat detail group.');
+      setGroupView('list');
+    } finally {
+      setIsLoadingGroupDetail(false);
     }
   };
 
-  const deleteContact = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm('Hapus kontak ini secara permanen dari database?')) {
-      try {
-        await importedContactApi.delete(id);
-        setImportedContacts(prev => prev.filter(c => c.id !== id));
-        setSelectedContacts(prev => prev.filter(p => p !== id));
-        toast.info('Kontak berhasil dihapus dari database.');
-      } catch (err) {
-        console.error(err);
-        toast.error('Gagal menghapus kontak dari database.');
-      }
-    }
-  };
-
-  const handleAddContactSubmit = async (e: React.FormEvent) => {
+  const handleEditGroupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newContactName.trim() || !newContactPhone.trim()) return;
-
-    const phone = cleanPhoneNumber(newContactPhone);
-    if (!phone) {
-      toast.error('Format nomor HP tidak valid.');
-      return;
-    }
-
+    if (!activeGroup) return;
+    setIsSavingGroup(true);
     try {
-      const created = await importedContactApi.create(newContactName.trim(), phone);
-      
-      const newContact: DisplayContact = {
-        id: created.id,
-        name: created.name,
-        phone: created.phone,
-        source: 'imported'
-      };
-
-      setImportedContacts(prev => {
-        const filtered = prev.filter(c => c.phone !== phone);
-        return [...filtered, newContact];
-      });
-      toast.success('Kontak berhasil disimpan ke database.');
-
-      setNewContactName('');
-      setNewContactPhone('');
-      setIsAddContactOpen(false);
+      await contactGroupApi.update(activeGroup.id, editGroupName.trim(), editGroupDesc.trim() || undefined);
+      setActiveGroup(prev => prev ? { ...prev, name: editGroupName.trim(), description: editGroupDesc.trim() } : prev);
+      setGroups(prev => prev.map(g => g.id === activeGroup.id ? { ...g, name: editGroupName.trim(), description: editGroupDesc.trim() } : g));
+      toast.success('Group berhasil diupdate.');
+      setIsEditGroupOpen(false);
     } catch (err) {
-      console.error(err);
-      toast.error('Gagal menyimpan kontak ke database.');
+      toast.error('Gagal mengupdate group.');
+    } finally {
+      setIsSavingGroup(false);
     }
   };
 
-  const downloadCsvTemplate = () => {
-    const headers = ['Name', 'Phone'];
-    const rows = DEFAULT_CONTACTS.map(c => `"${c.name.replace(/"/g, '""')}","${c.phone}"`);
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n'); // Add UTF-8 BOM
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', 'contacts_template.csv');
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('CSV template downloaded successfully.');
-  };
-
-  const downloadExcelTemplate = () => {
+  const handleDeleteGroup = async (groupId: string, groupName: string) => {
+    if (!window.confirm(`Hapus group "${groupName}"? Kontak di dalamnya tidak akan terhapus.`)) return;
     try {
-      const data = DEFAULT_CONTACTS.map(c => ({
-        'Name': c.name,
-        'Phone': c.phone
-      }));
-      const worksheet = XLSX.utils.json_to_sheet(data);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Contacts');
-      XLSX.writeFile(workbook, 'contacts_template.xlsx');
-      toast.success('Excel template downloaded successfully.');
+      await contactGroupApi.delete(groupId);
+      setGroups(prev => prev.filter(g => g.id !== groupId));
+      if (activeGroup?.id === groupId) { setGroupView('list'); setActiveGroup(null); }
+      toast.info(`Group "${groupName}" berhasil dihapus.`);
     } catch (err) {
-      console.error(err);
-      toast.error('Failed to generate Excel template.');
+      toast.error('Gagal menghapus group.');
     }
   };
+
+  // ── Member Management ───────────────────────────────────────────────────────
+
+  // contacts not yet in the active group (for Add Member modal)
+  const contactsNotInGroup = importedContacts.filter(c =>
+    !activeGroup?.members.some(m => m.contactId === c.id) &&
+    (c.name.toLowerCase().includes(memberSearch.toLowerCase()) || c.phone.includes(memberSearch))
+  );
+
+  const [pendingMemberIds, setPendingMemberIds] = useState<string[]>([]);
+
+  const handleAddMembers = async () => {
+    if (!activeGroup || pendingMemberIds.length === 0) return;
+    setIsAddingMembers(true);
+    try {
+      const result = await contactGroupApi.addMembers(activeGroup.id, pendingMemberIds);
+      toast.success(`${result.added} anggota berhasil ditambahkan.${result.skipped > 0 ? ` (${result.skipped} sudah ada)` : ''}`);
+      // Reload detail
+      const detail = await contactGroupApi.get(activeGroup.id);
+      setActiveGroup(detail);
+      setGroups(prev => prev.map(g => g.id === activeGroup.id ? { ...g, memberCount: detail.members.length } : g));
+      setPendingMemberIds([]); setMemberSearch(''); setIsAddMemberOpen(false);
+    } catch (err) {
+      toast.error('Gagal menambahkan anggota.');
+    } finally {
+      setIsAddingMembers(false);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string, memberName: string) => {
+    if (!activeGroup) return;
+    if (!window.confirm(`Hapus ${memberName} dari group ini? Kontaknya tidak akan terhapus.`)) return;
+    try {
+      await contactGroupApi.removeMember(activeGroup.id, memberId);
+      const detail = await contactGroupApi.get(activeGroup.id);
+      setActiveGroup(detail);
+      setGroups(prev => prev.map(g => g.id === activeGroup.id ? { ...g, memberCount: detail.members.length } : g));
+      toast.info(`${memberName} dihapus dari group.`);
+    } catch (err) {
+      toast.error('Gagal menghapus anggota dari group.');
+    }
+  };
+
+  // ── Blast WA ────────────────────────────────────────────────────────────────
+
+  const handleBlast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeGroup || !selectedSession || !blastMessage.trim()) return;
+    setIsBlasting(true);
+    try {
+      const result = await contactGroupApi.blast(activeGroup.id, selectedSession, blastMessage.trim(), blastDelay);
+      toast.success(result.message);
+      setIsBlastOpen(false); setBlastMessage('');
+    } catch (err) {
+      toast.error(`Gagal mengirim blast: ${err instanceof Error ? err.message : ''}`);
+    } finally {
+      setIsBlasting(false);
+    }
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   if (loadingSessions) {
     return (
@@ -507,343 +458,438 @@ export function Contacts() {
     );
   }
 
-  const isAllSelected =
-    filteredContacts.length > 0 &&
-    filteredContacts.map(c => c.phone).every(phone => selectedContacts.includes(phone));
-
   return (
     <div className="contacts-page">
       <PageHeader title={t('contacts.title')} subtitle={t('contacts.subtitle')} />
 
-      <div className="contacts-grid">
-        {/* Panel Kiri: Upload dan Aksi */}
-        <div className="left-panel">
-          <div className="card upload-card">
-            <h2>{t('contacts.importTitle')}</h2>
-            <p className="description">{t('contacts.importDesc')}</p>
+      {/* Main Tabs */}
+      <div className="tabs-container" style={{ marginTop: '1.5rem' }}>
+        <button
+          className={`tab-btn ${mainTab === 'contacts' ? 'active' : ''}`}
+          onClick={() => setMainTab('contacts')}
+        >
+          <FileSpreadsheet size={16} />
+          Database Kontak ({importedContacts.length})
+        </button>
+        <button
+          className={`tab-btn ${mainTab === 'groups' ? 'active' : ''}`}
+          onClick={() => setMainTab('groups')}
+        >
+          <Users size={16} />
+          Groups ({groups.length})
+        </button>
+      </div>
 
-            <div
-              className={`dropzone ${isDragOver ? 'drag-over' : ''}`}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={handleTriggerUpload}
-            >
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                accept=".csv, .xlsx, .xls"
-                style={{ display: 'none' }}
-              />
-              <Upload className="upload-icon" size={36} />
-              <span>Drag & drop files here or click to upload</span>
-              <span className="file-hint">CSV or Excel (.xlsx, .xls)</span>
-            </div>
+      {/* ══════════════════════════════════════════ CONTACTS TAB ══ */}
+      {mainTab === 'contacts' && (
+        <div className="contacts-grid">
+          {/* Left Panel */}
+          <div className="left-panel">
+            {/* Import Card */}
+            <div className="card upload-card">
+              <h2><Upload size={18} /> Import Kontak</h2>
+              <p className="description">Upload file Excel (.xlsx) dengan kolom <strong>Name</strong> dan <strong>Phone</strong>.</p>
 
-            <div className="template-downloads">
-              <button className="template-btn csv" onClick={(e) => { e.stopPropagation(); downloadCsvTemplate(); }}>
-                <FileSpreadsheet size={14} />
-                Download CSV Template
-              </button>
-              <button className="template-btn xlsx" onClick={(e) => { e.stopPropagation(); downloadExcelTemplate(); }}>
-                <FileSpreadsheet size={14} />
-                Download Excel Template
-              </button>
-            </div>
+              <div
+                className={`dropzone ${isDragOver ? 'drag-over' : ''}`}
+                onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+                onDragLeave={() => setIsDragOver(false)}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept=".xlsx,.xls"
+                  style={{ display: 'none' }}
+                />
+                <Upload className="upload-icon" size={36} />
+                <span>Drag & drop atau klik untuk upload</span>
+                <span className="file-hint">Excel (.xlsx, .xls)</span>
+              </div>
 
-            {importedContacts.length > 0 && (
-              <div className="import-status">
-                <div className="status-info">
-                  <Check size={16} className="status-success-icon" />
-                  <span>{importedContacts.length} contacts imported.</span>
-                </div>
-                <button className="clear-btn" onClick={clearImported}>
-                  Clear Imported
+              <div className="template-downloads" style={{ marginTop: '0.75rem' }}>
+                <button
+                  className="template-btn xlsx"
+                  style={{ gridColumn: '1 / -1' }}
+                  onClick={e => { e.stopPropagation(); downloadExcelTemplate(); }}
+                >
+                  <FileSpreadsheet size={14} />
+                  Download Template Excel
                 </button>
               </div>
-            )}
-          </div>
 
-          <div className="card session-card">
-            <h2>{t('contacts.selectSession')}</h2>
-            <div className="form-group">
-              <select
-                value={selectedSession}
-                onChange={e => setSelectedSession(e.target.value)}
-              >
-                {sessions.length === 0 && <option value="">{t('contacts.noReadySessions')}</option>}
-                {sessions.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.phone || 'No PhoneConnected'})
-                  </option>
-                ))}
-              </select>
-            </div>
-            {selectedSession && (
-              <button
-                className="refresh-btn"
-                onClick={() => void loadWhatsappContacts(selectedSession)}
-                disabled={isLoadingContacts}
-              >
-                <RefreshCw className={isLoadingContacts ? 'animate-spin' : ''} size={16} />
-                Refresh WA Contacts
-              </button>
-            )}
-          </div>
-
-          <div className="card action-card">
-            <h2>Actions</h2>
-            <button
-              className="create-group-btn"
-              onClick={() => setIsCreateGroupOpen(true)}
-              disabled={!canWrite || selectedContacts.length === 0 || !selectedSession}
-              title={
-                !selectedSession
-                  ? 'Koneksikan sesi WhatsApp berstatus READY terlebih dahulu'
-                  : !canWrite
-                  ? 'Anda tidak memiliki izin (role) untuk menulis/membuat grup'
-                  : selectedContacts.length === 0
-                  ? 'Pilih kontak di tabel terlebih dahulu'
-                  : undefined
-              }
-            >
-              <Plus size={18} />
-              {t('contacts.createGroupBtn')}
-            </button>
-            <button
-              className="add-contact-btn"
-              onClick={() => setIsAddContactOpen(true)}
-            >
-              <Plus size={18} />
-              Add Contact
-            </button>
-            <span className="selected-hint">
-              {selectedContacts.length} contacts selected
-            </span>
-          </div>
-        </div>
-
-        {/* Panel Kanan: Daftar Kontak */}
-        <div className="right-panel">
-          <div className="card table-card">
-            {/* Sliding Tabs */}
-            <div className="tabs-container">
-              <button
-                className={`tab-btn ${activeTab === 'imported' ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveTab('imported');
-                  setSelectedContacts([]);
-                }}
-              >
-                <FileSpreadsheet size={16} />
-                Database Impor ({importedContacts.length})
-              </button>
-              <button
-                className={`tab-btn ${activeTab === 'whatsapp' ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveTab('whatsapp');
-                  setSelectedContacts([]);
-                }}
-              >
-                <Users size={16} />
-                Kontak WhatsApp ({whatsappContacts.length})
-              </button>
+              {importedContacts.length > 0 && (
+                <div className="import-status">
+                  <div className="status-info">
+                    <Check size={16} className="status-success-icon" />
+                    <span>{importedContacts.length} kontak tersimpan di database.</span>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="table-header-row">
-              <h2>
-                {activeTab === 'imported' ? 'Kontak Database Impor' : 'Kontak Akun WhatsApp'}
-                <span className="count-badge">({filteredContacts.length})</span>
-              </h2>
+            {/* Actions Card */}
+            <div className="card action-card">
+              <h2>Aksi</h2>
+              <button className="add-contact-btn" onClick={() => setIsAddContactOpen(true)}>
+                <Plus size={18} /> Tambah Kontak Manual
+              </button>
+              {selectedContactIds.length > 0 && (
+                <button
+                  className="add-contact-btn"
+                  style={{ marginTop: '0.5rem', background: 'rgba(37,99,235,0.08)', color: 'var(--primary-color,#2563eb)', border: '1px solid rgba(37,99,235,0.2)' }}
+                  onClick={() => { setMainTab('groups'); }}
+                >
+                  <FolderOpen size={18} />
+                  Tambah {selectedContactIds.length} kontak ke Group
+                </button>
+              )}
+              {selectedContactIds.length > 0 && (
+                <span className="selected-hint">{selectedContactIds.length} kontak dipilih</span>
+              )}
+            </div>
+          </div>
 
-              <div className="filters">
-                <div className="search-box">
-                  <Search size={16} />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    placeholder={t('contacts.searchPlaceholder')}
-                  />
+          {/* Right Panel: Contact Table */}
+          <div className="right-panel">
+            <div className="card table-card">
+              <div className="table-header-row">
+                <h2>
+                  Daftar Kontak
+                  <span className="count-badge">({filteredContacts.length})</span>
+                </h2>
+                <div className="filters">
+                  <div className="search-box">
+                    <Search size={16} />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      placeholder="Cari nama atau nomor..."
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {isLoadingContacts ? (
-              <div className="table-loading">
-                <Loader2 className="animate-spin" size={24} />
-                <span>Loading Contacts...</span>
-              </div>
-            ) : filteredContacts.length === 0 ? (
-              <div className="table-empty">
-                <Users size={48} />
-                <p>{t('contacts.noContacts')}</p>
-              </div>
-            ) : (
-              <div className="table-container" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                <div style={{ flexGrow: 1, overflowY: 'auto' }}>
-                  <table className="contacts-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 40 }}>
-                          <input
-                            type="checkbox"
-                            checked={isAllSelected}
-                            onChange={toggleSelectAll}
-                          />
-                        </th>
-                        <th>{t('contacts.table.name')}</th>
-                        <th>{t('contacts.table.phone')}</th>
-                        <th>{t('contacts.table.source')}</th>
-                        <th style={{ width: 80, textAlign: 'right' }}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedContacts.map(c => {
-                        const isSelected = selectedContacts.includes(c.phone);
-                        return (
-                          <tr
-                            key={c.id}
-                            className={isSelected ? 'selected-row' : ''}
-                            onClick={() => toggleSelectContact(c.phone)}
-                          >
-                            <td onClick={e => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleSelectContact(c.phone)}
-                              />
-                            </td>
-                            <td className="contact-name">
-                              <span>{c.name}</span>
-                            </td>
-                            <td className="contact-phone mono">+{c.phone}</td>
-                            <td>
-                              <span className={`badge badge-${c.source}`}>
-                                {c.source === 'whatsapp' ? (
-                                  <RefreshCw size={10} />
-                                ) : (
-                                  <FileSpreadsheet size={10} />
-                                )}
-                                {t(`contacts.sources.${c.source}`)}
-                              </span>
-                            </td>
-                            <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
-                              {c.source === 'imported' && (
+              {isLoadingContacts ? (
+                <div className="table-loading">
+                  <Loader2 className="animate-spin" size={24} />
+                  <span>Memuat kontak...</span>
+                </div>
+              ) : filteredContacts.length === 0 ? (
+                <div className="table-empty">
+                  <Users size={48} />
+                  <p>Belum ada kontak. Import dari file Excel atau tambah manual.</p>
+                </div>
+              ) : (
+                <div className="table-container" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <div style={{ flexGrow: 1, overflowY: 'auto' }}>
+                    <table className="contacts-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 40 }}>
+                            <input type="checkbox" checked={isAllSelected} onChange={toggleSelectAll} />
+                          </th>
+                          <th>{t('contacts.table.name')}</th>
+                          <th>{t('contacts.table.phone')}</th>
+                          <th style={{ width: 80, textAlign: 'right' }}>Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedContacts.map(c => {
+                          const isSelected = selectedContactIds.includes(c.id);
+                          return (
+                            <tr
+                              key={c.id}
+                              className={isSelected ? 'selected-row' : ''}
+                              onClick={() => toggleSelectContact(c.id)}
+                            >
+                              <td onClick={e => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleSelectContact(c.id)}
+                                />
+                              </td>
+                              <td className="contact-name"><span>{c.name}</span></td>
+                              <td className="contact-phone mono">+{c.phone}</td>
+                              <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                                 <button
                                   className="delete-row-btn"
-                                  onClick={(e) => deleteContact(c.id, e)}
+                                  onClick={e => deleteContact(c.id, e)}
                                   title="Hapus Kontak"
                                 >
                                   <X size={14} />
                                 </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="pagination-bar">
-                  <div className="pagination-info">
-                    Showing {filteredContacts.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} to{' '}
-                    {Math.min(filteredContacts.length, currentPage * pageSize)} of{' '}
-                    {filteredContacts.length} contacts
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                  <div className="pagination-controls">
-                    <button
-                      className="pagination-btn"
-                      disabled={currentPage === 1}
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    >
-                      Previous
-                    </button>
-                    
-                    <span className="page-indicator">
-                      Page {currentPage} of {totalPages || 1}
-                    </span>
 
-                    <button
-                      className="pagination-btn"
-                      disabled={currentPage === totalPages || totalPages === 0}
-                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    >
-                      Next
-                    </button>
-
-                    <select
-                      className="page-size-select"
-                      value={pageSize}
-                      onChange={e => {
-                        setPageSize(Number(e.target.value));
-                        setCurrentPage(1);
-                      }}
-                    >
-                      <option value={10}>10 / page</option>
-                      <option value={25}>25 / page</option>
-                      <option value={50}>50 / page</option>
-                      <option value={100}>100 / page</option>
-                    </select>
+                  <div className="pagination-bar">
+                    <div className="pagination-info">
+                      Showing {filteredContacts.length === 0 ? 0 : (currentPage - 1) * pageSize + 1} –{' '}
+                      {Math.min(filteredContacts.length, currentPage * pageSize)} of {filteredContacts.length}
+                    </div>
+                    <div className="pagination-controls">
+                      <button
+                        className="pagination-btn"
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      >Previous</button>
+                      <span className="page-indicator">Page {currentPage} of {totalPages || 1}</span>
+                      <button
+                        className="pagination-btn"
+                        disabled={currentPage === totalPages || totalPages === 0}
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      >Next</button>
+                      <select
+                        className="page-size-select"
+                        value={pageSize}
+                        onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                      >
+                        <option value={10}>10 / page</option>
+                        <option value={25}>25 / page</option>
+                        <option value={50}>50 / page</option>
+                        <option value={100}>100 / page</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Modal Buat Grup */}
-      {isCreateGroupOpen && (
-        <div className="modal-overlay" onClick={() => setIsCreateGroupOpen(false)}>
+      {/* ══════════════════════════════════════════ GROUPS TAB ══ */}
+      {mainTab === 'groups' && (
+        <div style={{ marginTop: '1.5rem' }}>
+          {groupView === 'list' && (
+            <>
+              {/* Session Picker + Create Group */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-secondary,#64748b)' }}>Sesi WA:</span>
+                  <select
+                    value={selectedSession}
+                    onChange={e => setSelectedSession(e.target.value)}
+                    style={{ padding: '0.5rem 0.75rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary,#1e293b)', fontSize: '0.875rem', outline: 'none' }}
+                  >
+                    {sessions.length === 0 && <option value="">Tidak ada sesi READY</option>}
+                    {sessions.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.phone || 'No Phone'})</option>
+                    ))}
+                  </select>
+                </div>
+                {canWrite && (
+                  <button
+                    className="btn-submit"
+                    onClick={() => setIsCreateGroupOpen(true)}
+                  >
+                    <Plus size={16} /> Buat Group Baru
+                  </button>
+                )}
+              </div>
+
+              {isLoadingGroups ? (
+                <div className="table-loading">
+                  <Loader2 className="animate-spin" size={24} />
+                  <span>Memuat groups...</span>
+                </div>
+              ) : groups.length === 0 ? (
+                <div className="table-empty" style={{ padding: '6rem 0' }}>
+                  <Users size={48} />
+                  <p>Belum ada group. Buat group baru dan tambahkan kontak untuk mulai blast WA personal.</p>
+                  {canWrite && (
+                    <button className="btn-submit" onClick={() => setIsCreateGroupOpen(true)}>
+                      <Plus size={16} /> Buat Group Pertama
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
+                  {groups.map(group => (
+                    <div
+                      key={group.id}
+                      className="card"
+                      style={{ marginBottom: 0, cursor: 'pointer', transition: 'box-shadow 0.2s, transform 0.2s' }}
+                      onClick={() => openGroupDetail(group.id)}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                            <FolderOpen size={18} style={{ color: 'var(--primary-color,#2563eb)', flexShrink: 0 }} />
+                            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary,#1e293b)' }}>{group.name}</h3>
+                          </div>
+                          {group.description && (
+                            <p style={{ margin: '0.25rem 0 0.5rem 1.625rem', fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)', lineHeight: 1.4 }}>{group.description}</p>
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.5rem', marginLeft: '1.625rem' }}>
+                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary,#64748b)' }}>
+                              <Users size={13} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }} />
+                              {group.memberCount} anggota
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.25rem', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                          <button
+                            className="delete-row-btn"
+                            title="Hapus Group"
+                            onClick={() => handleDeleteGroup(group.id, group.name)}
+                            style={{ padding: '0.375rem' }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--primary-color,#2563eb)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          Lihat Detail <ChevronRight size={14} />
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Group Detail View ── */}
+          {groupView === 'detail' && (
+            <div>
+              {/* Back + Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                <button
+                  className="btn-cancel"
+                  onClick={() => { setGroupView('list'); setActiveGroup(null); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                >
+                  <ArrowLeft size={15} /> Kembali
+                </button>
+                {isLoadingGroupDetail ? (
+                  <Loader2 className="animate-spin" size={20} />
+                ) : activeGroup && (
+                  <>
+                    <div>
+                      <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>{activeGroup.name}</h2>
+                      {activeGroup.description && (
+                        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)' }}>{activeGroup.description}</p>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
+                      <button
+                        className="btn-cancel"
+                        onClick={() => { setEditGroupName(activeGroup.name); setEditGroupDesc(activeGroup.description ?? ''); setIsEditGroupOpen(true); }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                      >
+                        <Edit2 size={14} /> Edit
+                      </button>
+                      {canWrite && selectedSession && (
+                        <button
+                          className="btn-submit"
+                          onClick={() => setIsBlastOpen(true)}
+                          disabled={!activeGroup.members.length}
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                          title={!activeGroup.members.length ? 'Tambahkan anggota terlebih dahulu' : ''}
+                        >
+                          <Send size={14} /> Blast WA Personal
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {isLoadingGroupDetail ? (
+                <div className="table-loading"><Loader2 className="animate-spin" size={24} /></div>
+              ) : activeGroup && (
+                <div className="card table-card">
+                  <div className="table-header-row">
+                    <h2>
+                      Anggota Group
+                      <span className="count-badge">({activeGroup.members.length})</span>
+                    </h2>
+                    <button
+                      className="btn-submit"
+                      style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}
+                      onClick={() => { setPendingMemberIds([]); setMemberSearch(''); setIsAddMemberOpen(true); }}
+                    >
+                      <UserPlus size={15} /> Tambah Anggota
+                    </button>
+                  </div>
+
+                  {activeGroup.members.length === 0 ? (
+                    <div className="table-empty">
+                      <Users size={40} />
+                      <p>Group masih kosong. Tambahkan kontak ke group ini.</p>
+                      <button className="btn-submit" onClick={() => setIsAddMemberOpen(true)}>
+                        <UserPlus size={15} /> Tambah Anggota
+                      </button>
+                    </div>
+                  ) : (
+                    <table className="contacts-table">
+                      <thead>
+                        <tr>
+                          <th>Nama</th>
+                          <th>Nomor</th>
+                          <th style={{ width: 80, textAlign: 'right' }}>Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeGroup.members.map(m => (
+                          <tr key={m.id}>
+                            <td className="contact-name">{m.name}</td>
+                            <td className="contact-phone mono">+{m.phone}</td>
+                            <td style={{ textAlign: 'right' }}>
+                              <button
+                                className="delete-row-btn"
+                                title="Hapus dari group"
+                                onClick={() => handleRemoveMember(m.id, m.name)}
+                              >
+                                <X size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════ MODALS ══ */}
+
+      {/* Add Contact Manual */}
+      {isAddContactOpen && (
+        <div className="modal-overlay" onClick={() => setIsAddContactOpen(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{t('contacts.createGroupTitle')}</h2>
-              <button className="close-modal-btn" onClick={() => setIsCreateGroupOpen(false)}>
-                <X size={20} />
-              </button>
+              <h2>Tambah Kontak Baru</h2>
+              <button className="close-modal-btn" onClick={() => setIsAddContactOpen(false)}><X size={20} /></button>
             </div>
-            <form onSubmit={handleCreateGroupSubmit}>
+            <form onSubmit={handleAddContactSubmit}>
               <div className="form-group">
-                <label htmlFor="group-name">{t('contacts.groupNameLabel')}</label>
-                <input
-                  id="group-name"
-                  type="text"
-                  required
-                  value={groupName}
-                  onChange={e => setGroupName(e.target.value)}
-                  placeholder={t('contacts.groupNamePlaceholder')}
-                />
+                <label htmlFor="contact-name">Nama Lengkap</label>
+                <input id="contact-name" type="text" required value={newContactName} onChange={e => setNewContactName(e.target.value)} placeholder="Contoh: Ahmad Fulan" />
               </div>
-
-              <div className="selected-preview">
-                <Users size={16} />
-                <span>
-                  {t('contacts.selectedCount', { count: selectedContacts.length })}
-                </span>
+              <div className="form-group">
+                <label htmlFor="contact-phone">Nomor HP / WhatsApp</label>
+                <input id="contact-phone" type="text" required value={newContactPhone} onChange={e => setNewContactPhone(e.target.value)} placeholder="Contoh: 081234567890 atau 6281234567890" />
               </div>
-
               <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-cancel"
-                  onClick={() => setIsCreateGroupOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn-submit"
-                  disabled={isCreatingGroup || !groupName}
-                >
-                  {isCreatingGroup ? (
-                    <Loader2 className="animate-spin" size={16} />
-                  ) : (
-                    <Check size={16} />
-                  )}
-                  {isCreatingGroup ? t('contacts.creating') : t('contacts.create')}
+                <button type="button" className="btn-cancel" onClick={() => setIsAddContactOpen(false)}>Batal</button>
+                <button type="submit" className="btn-submit" disabled={!newContactName.trim() || !newContactPhone.trim()}>
+                  <Check size={16} /> Simpan Kontak
                 </button>
               </div>
             </form>
@@ -851,56 +897,182 @@ export function Contacts() {
         </div>
       )}
 
-      {/* Modal Tambah Kontak */}
-      {isAddContactOpen && (
-        <div className="modal-overlay" onClick={() => setIsAddContactOpen(false)}>
+      {/* Create Group */}
+      {isCreateGroupOpen && (
+        <div className="modal-overlay" onClick={() => setIsCreateGroupOpen(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Tambah Kontak Baru</h2>
-              <button className="close-modal-btn" onClick={() => setIsAddContactOpen(false)}>
-                <X size={20} />
+              <h2>Buat Group Baru</h2>
+              <button className="close-modal-btn" onClick={() => setIsCreateGroupOpen(false)}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleCreateGroup}>
+              <div className="form-group">
+                <label htmlFor="group-name">Nama Group</label>
+                <input id="group-name" type="text" required value={newGroupName} onChange={e => setNewGroupName(e.target.value)} placeholder="Contoh: Tim Santri 2024" />
+              </div>
+              <div className="form-group">
+                <label htmlFor="group-desc">Deskripsi (opsional)</label>
+                <input id="group-desc" type="text" value={newGroupDesc} onChange={e => setNewGroupDesc(e.target.value)} placeholder="Contoh: Group untuk blast info pesantren" />
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)', marginBottom: '1rem' }}>
+                💡 Setelah dibuat, tambahkan kontak ke group dari halaman detail group.
+              </p>
+              <div className="modal-actions">
+                <button type="button" className="btn-cancel" onClick={() => setIsCreateGroupOpen(false)}>Batal</button>
+                <button type="submit" className="btn-submit" disabled={isCreatingGroup || !newGroupName.trim()}>
+                  {isCreatingGroup ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
+                  {isCreatingGroup ? 'Membuat...' : 'Buat Group'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Group */}
+      {isEditGroupOpen && activeGroup && (
+        <div className="modal-overlay" onClick={() => setIsEditGroupOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Edit Group</h2>
+              <button className="close-modal-btn" onClick={() => setIsEditGroupOpen(false)}><X size={20} /></button>
+            </div>
+            <form onSubmit={handleEditGroupSubmit}>
+              <div className="form-group">
+                <label>Nama Group</label>
+                <input type="text" required value={editGroupName} onChange={e => setEditGroupName(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Deskripsi (opsional)</label>
+                <input type="text" value={editGroupDesc} onChange={e => setEditGroupDesc(e.target.value)} />
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn-cancel" onClick={() => setIsEditGroupOpen(false)}>Batal</button>
+                <button type="submit" className="btn-submit" disabled={isSavingGroup || !editGroupName.trim()}>
+                  {isSavingGroup ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
+                  Simpan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Members Modal */}
+      {isAddMemberOpen && activeGroup && (
+        <div className="modal-overlay" onClick={() => setIsAddMemberOpen(false)}>
+          <div className="modal-content" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Tambah Anggota ke "{activeGroup.name}"</h2>
+              <button className="close-modal-btn" onClick={() => setIsAddMemberOpen(false)}><X size={20} /></button>
+            </div>
+            <div className="search-box" style={{ marginBottom: '1rem' }}>
+              <Search size={16} />
+              <input
+                type="text"
+                value={memberSearch}
+                onChange={e => setMemberSearch(e.target.value)}
+                placeholder="Cari kontak..."
+                style={{ width: '100%' }}
+              />
+            </div>
+            <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--border-color,#e2e8f0)', borderRadius: 8, marginBottom: '1rem' }}>
+              {contactsNotInGroup.length === 0 ? (
+                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary,#94a3b8)', fontSize: '0.875rem' }}>
+                  Semua kontak sudah ada di group ini.
+                </div>
+              ) : (
+                contactsNotInGroup.map(c => (
+                  <label
+                    key={c.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem 0.875rem', cursor: 'pointer', borderBottom: '1px solid var(--border-color,#f1f5f9)', transition: 'background 0.15s' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={pendingMemberIds.includes(c.id)}
+                      onChange={() => setPendingMemberIds(prev =>
+                        prev.includes(c.id) ? prev.filter(id => id !== c.id) : [...prev, c.id]
+                      )}
+                      style={{ accentColor: 'var(--primary-color,#2563eb)' }}
+                    />
+                    <div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)' }}>+{c.phone}</div>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+            <div className="modal-actions">
+              <button className="btn-cancel" onClick={() => setIsAddMemberOpen(false)}>Batal</button>
+              <button
+                className="btn-submit"
+                disabled={isAddingMembers || pendingMemberIds.length === 0}
+                onClick={handleAddMembers}
+              >
+                {isAddingMembers ? <Loader2 className="animate-spin" size={16} /> : <UserPlus size={16} />}
+                Tambahkan ({pendingMemberIds.length})
               </button>
             </div>
-            <form onSubmit={handleAddContactSubmit}>
-              <div className="form-group">
-                <label htmlFor="contact-name">Nama Lengkap / Petugas</label>
-                <input
-                  id="contact-name"
-                  type="text"
-                  required
-                  value={newContactName}
-                  onChange={e => setNewContactName(e.target.value)}
-                  placeholder="Contoh: AHMAD GHOZALI"
-                />
-              </div>
+          </div>
+        </div>
+      )}
 
+      {/* Blast WA Modal */}
+      {isBlastOpen && activeGroup && (
+        <div className="modal-overlay" onClick={() => setIsBlastOpen(false)}>
+          <div className="modal-content" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2><Send size={18} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />Blast WA Personal</h2>
+              <button className="close-modal-btn" onClick={() => setIsBlastOpen(false)}><X size={20} /></button>
+            </div>
+            <div style={{ padding: '0.75rem', background: 'rgba(37,99,235,0.05)', border: '1px solid rgba(37,99,235,0.15)', borderRadius: 8, marginBottom: '1.25rem', fontSize: '0.85rem' }}>
+              <strong>Group:</strong> {activeGroup.name} &nbsp;·&nbsp;
+              <strong>{activeGroup.members.length} penerima</strong> &nbsp;·&nbsp;
+              <strong>Sesi:</strong> {sessions.find(s => s.id === selectedSession)?.name ?? selectedSession}
+            </div>
+            <form onSubmit={handleBlast}>
               <div className="form-group">
-                <label htmlFor="contact-phone">Nomor HP / WhatsApp</label>
-                <input
-                  id="contact-phone"
-                  type="text"
+                <label htmlFor="blast-msg">Pesan</label>
+                <textarea
+                  id="blast-msg"
                   required
-                  value={newContactPhone}
-                  onChange={e => setNewContactPhone(e.target.value)}
-                  placeholder="Contoh: 081225008906 atau 6281225008906"
+                  value={blastMessage}
+                  onChange={e => setBlastMessage(e.target.value)}
+                  placeholder="Halo {{name}}, ini adalah pengumuman penting dari kami."
+                  rows={5}
+                  style={{ width: '100%', padding: '0.625rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary,#1e293b)', fontSize: '0.95rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
                 />
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>
+                  Gunakan <code style={{ background: 'rgba(0,0,0,0.06)', padding: '0 0.3rem', borderRadius: 3 }}>{'{{name}}'}</code> untuk menyisipkan nama penerima secara otomatis.
+                </p>
               </div>
-
+              <div className="form-group">
+                <label htmlFor="blast-delay">Jeda antar pesan (ms)</label>
+                <input
+                  id="blast-delay"
+                  type="number"
+                  min={1000}
+                  max={30000}
+                  step={500}
+                  value={blastDelay}
+                  onChange={e => setBlastDelay(Number(e.target.value))}
+                  style={{ width: '100%', padding: '0.625rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary)', fontSize: '0.9rem', outline: 'none' }}
+                />
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>
+                  Rekomendasi: 3000ms (3 detik). Jeda terlalu pendek berisiko akun WA dibatasi.
+                </p>
+              </div>
               <div className="modal-actions">
-                <button
-                  type="button"
-                  className="btn-cancel"
-                  onClick={() => setIsAddContactOpen(false)}
-                >
-                  Batal
-                </button>
+                <button type="button" className="btn-cancel" onClick={() => setIsBlastOpen(false)}>Batal</button>
                 <button
                   type="submit"
                   className="btn-submit"
-                  disabled={!newContactName.trim() || !newContactPhone.trim()}
+                  disabled={isBlasting || !blastMessage.trim() || !selectedSession}
+                  style={{ background: isBlasting ? undefined : '#16a34a' }}
                 >
-                  <Check size={16} />
-                  Simpan Kontak
+                  {isBlasting ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
+                  {isBlasting ? 'Mengirim...' : `Kirim ke ${activeGroup.members.length} Penerima`}
                 </button>
               </div>
             </form>
