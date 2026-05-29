@@ -21,12 +21,12 @@ services:
           sleep 2
         done
         echo "PostgreSQL is ready."
-        if psql -h $$DB_HOST -p $$DB_PORT -U $$DB_USER -lqt | cut -d'|' -f1 | grep -qw $$DB_NAME; then
+        if psql -h $$DB_HOST -p $$DB_PORT -U $$DB_USER -d postgres -lqt | cut -d'|' -f1 | grep -qw $$DB_NAME; then
           echo "Database '$$DB_NAME' already exists, skipping."
         else
           echo "Creating database '$$DB_NAME'..."
-          psql -h $$DB_HOST -p $$DB_PORT -U $$DB_USER -c "CREATE DATABASE \"$$DB_NAME\";"
-          echo "Database '$$DB_NAME' created."
+          psql -h $$DB_HOST -p $$DB_PORT -U $$DB_USER -d postgres -c "CREATE DATABASE \"$$DB_NAME\";"
+          echo "Done."
         fi
 
   # ===== CORE: OpenWA Backend API =====
