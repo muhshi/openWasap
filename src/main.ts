@@ -37,24 +37,32 @@ if (fs.existsSync(generatedEnvPath)) {
   dotenv.config({ path: generatedEnvPath, override: false });
 } else {
   console.log('[Bootstrap] First run detected, creating default configuration...');
-  // Create minimal .env.generated with sensible defaults
+  // Use already-set process.env values (e.g. from Docker/docker-compose) as
+  // defaults so that the generated file never overrides the host environment.
+  const dbType = process.env.DATABASE_TYPE || 'sqlite';
+  const storageType = process.env.STORAGE_TYPE || 'local';
+  const redisEnabled = process.env.REDIS_ENABLED || 'false';
+  const redisBuiltin = process.env.REDIS_BUILTIN || 'false';
+  const queueEnabled = process.env.QUEUE_ENABLED || 'false';
+  const minioBuiltin = process.env.MINIO_BUILTIN || 'false';
+
   const minimalConfig = `# OpenWA Configuration
 # Generated automatically on first run
 # Edit via Dashboard > Infrastructure or modify this file directly.
 # Note: values in process env or project .env take precedence over this file.
 
-# Database (SQLite - no external service required)
-DATABASE_TYPE=sqlite
+# Database
+DATABASE_TYPE=${dbType}
 POSTGRES_BUILTIN=false
 
-# Redis & Queue (disabled by default)
-REDIS_ENABLED=false
-REDIS_BUILTIN=false
-QUEUE_ENABLED=false
+# Redis & Queue
+REDIS_ENABLED=${redisEnabled}
+REDIS_BUILTIN=${redisBuiltin}
+QUEUE_ENABLED=${queueEnabled}
 
-# Storage (Local filesystem)
-STORAGE_TYPE=local
-MINIO_BUILTIN=false
+# Storage
+STORAGE_TYPE=${storageType}
+MINIO_BUILTIN=${minioBuiltin}
 STORAGE_PATH=./data/media
 
 # Docker Profiles: none (minimal setup)
