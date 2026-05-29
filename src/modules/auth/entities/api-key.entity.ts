@@ -1,4 +1,5 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { arrayColumnType } from '../../../common/utils/column-types';
 
 export enum ApiKeyRole {
   ADMIN = 'admin',
@@ -28,10 +29,10 @@ export class ApiKey {
   })
   role: ApiKeyRole;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: arrayColumnType(), nullable: true })
   allowedIps: string[] | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: arrayColumnType(), nullable: true })
   allowedSessions: string[] | null;
 
   @Column({ type: 'boolean', default: true })
