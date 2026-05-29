@@ -18,7 +18,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { importedContactApi, contactGroupApi } from '../services/api';
+import { importedContactApi, contactGroupApi, messageApi } from '../services/api';
 import type { ImportedContact, ContactGroup, ContactGroupDetail } from '../services/api';
 import { useSessionsQuery } from '../hooks/queries';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -91,11 +91,17 @@ export function Contacts() {
   const [memberSearch, setMemberSearch] = useState('');
   const [isAddingMembers, setIsAddingMembers] = useState(false);
 
-  // Blast WA modal
+  // Blast WA modal (unified: contacts or group)
   const [isBlastOpen, setIsBlastOpen] = useState(false);
+  const [blastMode, setBlastMode] = useState<'contacts' | 'group'>('contacts');
+  const [blastGroupId, setBlastGroupId] = useState('');
   const [blastMessage, setBlastMessage] = useState('');
   const [blastDelay, setBlastDelay] = useState(3000);
   const [isBlasting, setIsBlasting] = useState(false);
+  const [blastProgress, setBlastProgress] = useState<{ done: number; total: number } | null>(null);
+
+  // Bulk delete
+  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
 
   // ── Load Data ───────────────────────────────────────────────────────────────
 
@@ -431,20 +437,74 @@ export function Contacts() {
     }
   };
 
-  // ── Blast WA ────────────────────────────────────────────────────────────────
+  // ── Bulk Delete ─────────────────────────────────────────────────────────────
+
+  const handleBulkDelete = async () => {
+    if (selectedContactIds.length === 0) return;
+    if (!window.confirm(`Hapus ${selectedContactIds.length} kontak yang dipilih secara permanen dari database?`)) return;
+    setIsDeletingBulk(true);
+    let deleted = 0;
+    try {
+      for (const id of selectedContactIds) {
+        try { await importedContactApi.delete(id); deleted++; } catch { /* skip */ }
+      }
+      setImportedContacts(prev => prev.filter(c => !selectedContactIds.includes(c.id)));
+      setSelectedContactIds([]);
+      toast.info(`${deleted} kontak berhasil dihapus.`);
+    } catch (err) {
+      toast.error('Terjadi kesalahan saat menghapus kontak.');
+    } finally {
+      setIsDeletingBulk(false);
+    }
+  };
+
+  // ── Blast WA (Unified) ──────────────────────────────────────────────────────
+
+  const openBlastModal = (mode: 'contacts' | 'group', groupId?: string) => {
+    setBlastMode(mode);
+    setBlastGroupId(groupId ?? (groups[0]?.id ?? ''));
+    setBlastMessage('');
+    setBlastProgress(null);
+    setIsBlastOpen(true);
+  };
 
   const handleBlast = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!activeGroup || !selectedSession || !blastMessage.trim()) return;
+    if (!selectedSession || !blastMessage.trim()) return;
     setIsBlasting(true);
+    setBlastProgress(null);
+
     try {
-      const result = await contactGroupApi.blast(activeGroup.id, selectedSession, blastMessage.trim(), blastDelay);
-      toast.success(result.message);
+      if (blastMode === 'group') {
+        // Backend handles group blast
+        if (!blastGroupId) { toast.error('Pilih group terlebih dahulu.'); return; }
+        const result = await contactGroupApi.blast(blastGroupId, selectedSession, blastMessage.trim(), blastDelay);
+        toast.success(result.message);
+      } else {
+        // Frontend loop for selected contacts
+        const targets = importedContacts.filter(c => selectedContactIds.includes(c.id));
+        if (targets.length === 0) { toast.error('Tidak ada kontak yang dipilih.'); return; }
+        let sent = 0; let failed = 0;
+        setBlastProgress({ done: 0, total: targets.length });
+        for (let i = 0; i < targets.length; i++) {
+          const contact = targets[i];
+          try {
+            const chatId = `${contact.phone}@c.us`;
+            const msg = blastMessage.trim().replace(/\{\{name\}\}/g, contact.name);
+            await messageApi.sendText(selectedSession, chatId, msg);
+            sent++;
+          } catch { failed++; }
+          setBlastProgress({ done: i + 1, total: targets.length });
+          if (i < targets.length - 1) await new Promise(r => setTimeout(r, blastDelay));
+        }
+        toast.success(`Blast selesai: ${sent} berhasil${failed > 0 ? `, ${failed} gagal` : ''}.`);
+      }
       setIsBlastOpen(false); setBlastMessage('');
     } catch (err) {
       toast.error(`Gagal mengirim blast: ${err instanceof Error ? err.message : ''}`);
     } finally {
       setIsBlasting(false);
+      setBlastProgress(null);
     }
   };
 
@@ -536,19 +596,58 @@ export function Contacts() {
               <button className="add-contact-btn" onClick={() => setIsAddContactOpen(true)}>
                 <Plus size={18} /> Tambah Kontak Manual
               </button>
+
               {selectedContactIds.length > 0 && (
-                <button
-                  className="add-contact-btn"
-                  style={{ marginTop: '0.5rem', background: 'rgba(37,99,235,0.08)', color: 'var(--primary-color,#2563eb)', border: '1px solid rgba(37,99,235,0.2)' }}
-                  onClick={() => { setMainTab('groups'); }}
+                <>
+                  <div style={{ marginTop: '0.75rem', padding: '0.625rem', background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.15)', borderRadius: 8 }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary-color,#2563eb)' }}>
+                      {selectedContactIds.length} kontak dipilih
+                    </span>
+                    <button
+                      style={{ float: 'right', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', padding: 0 }}
+                      onClick={() => setSelectedContactIds([])}
+                    >Batal pilih</button>
+                  </div>
+                  <button
+                    className="add-contact-btn"
+                    style={{ marginTop: '0.5rem', background: '#16a34a', color: '#fff', border: 'none' }}
+                    onClick={() => openBlastModal('contacts')}
+                    disabled={!selectedSession}
+                    title={!selectedSession ? 'Pilih sesi WA terlebih dahulu' : ''}
+                  >
+                    <Send size={16} /> Blast WA ke {selectedContactIds.length} Kontak
+                  </button>
+                  <button
+                    className="add-contact-btn"
+                    style={{ marginTop: '0.5rem', background: 'rgba(37,99,235,0.08)', color: 'var(--primary-color,#2563eb)', border: '1px solid rgba(37,99,235,0.2)' }}
+                    onClick={() => { setMainTab('groups'); }}
+                  >
+                    <FolderOpen size={16} /> Tambahkan ke Group
+                  </button>
+                  <button
+                    className="add-contact-btn"
+                    style={{ marginTop: '0.5rem', background: 'rgba(239,68,68,0.08)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.2)' }}
+                    onClick={handleBulkDelete}
+                    disabled={isDeletingBulk}
+                  >
+                    {isDeletingBulk ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
+                    Hapus {selectedContactIds.length} Kontak
+                  </button>
+                </>
+              )}
+
+              {/* Session picker for blast */}
+              <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color,#e2e8f0)', paddingTop: '1rem' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary,#64748b)', display: 'block', marginBottom: '0.4rem' }}>Sesi WA Aktif</label>
+                <select
+                  value={selectedSession}
+                  onChange={e => setSelectedSession(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary)', fontSize: '0.875rem', outline: 'none' }}
                 >
-                  <FolderOpen size={18} />
-                  Tambah {selectedContactIds.length} kontak ke Group
-                </button>
-              )}
-              {selectedContactIds.length > 0 && (
-                <span className="selected-hint">{selectedContactIds.length} kontak dipilih</span>
-              )}
+                  {sessions.length === 0 && <option value="">Tidak ada sesi READY</option>}
+                  {sessions.map(s => <option key={s.id} value={s.id}>{s.name} ({s.phone ?? 'No Phone'})</option>)}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -748,8 +847,20 @@ export function Contacts() {
                           </button>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: '0.75rem' }}>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--primary-color,#2563eb)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.75rem', gap: '0.5rem' }} onClick={e => e.stopPropagation()}>
+                        <button
+                          className="btn-submit"
+                          style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem', background: '#16a34a', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                          disabled={!selectedSession || group.memberCount === 0}
+                          title={!selectedSession ? 'Pilih sesi WA terlebih dahulu di tab Contacts' : group.memberCount === 0 ? 'Group kosong' : `Blast WA ke ${group.memberCount} anggota`}
+                          onClick={() => openBlastModal('group', group.id)}
+                        >
+                          <Send size={12} /> Blast WA
+                        </button>
+                        <span
+                          style={{ fontSize: '0.8rem', color: 'var(--primary-color,#2563eb)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                          onClick={() => openGroupDetail(group.id)}
+                        >
                           Lihat Detail <ChevronRight size={14} />
                         </span>
                       </div>
@@ -793,7 +904,7 @@ export function Contacts() {
                       {canWrite && selectedSession && (
                         <button
                           className="btn-submit"
-                          onClick={() => setIsBlastOpen(true)}
+                          onClick={() => openBlastModal('group', activeGroup.id)}
                           disabled={!activeGroup.members.length}
                           style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
                           title={!activeGroup.members.length ? 'Tambahkan anggota terlebih dahulu' : ''}
@@ -1018,33 +1129,55 @@ export function Contacts() {
         </div>
       )}
 
-      {/* Blast WA Modal */}
-      {isBlastOpen && activeGroup && (
-        <div className="modal-overlay" onClick={() => setIsBlastOpen(false)}>
+      {/* Blast WA Modal - Unified */}
+      {isBlastOpen && (
+        <div className="modal-overlay" onClick={() => !isBlasting && setIsBlastOpen(false)}>
           <div className="modal-content" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2><Send size={18} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 6 }} />Blast WA Personal</h2>
-              <button className="close-modal-btn" onClick={() => setIsBlastOpen(false)}><X size={20} /></button>
+              <button className="close-modal-btn" onClick={() => setIsBlastOpen(false)} disabled={isBlasting}><X size={20} /></button>
             </div>
+
+            {/* Info bar */}
             <div style={{ padding: '0.75rem', background: 'rgba(37,99,235,0.05)', border: '1px solid rgba(37,99,235,0.15)', borderRadius: 8, marginBottom: '1.25rem', fontSize: '0.85rem' }}>
-              <strong>Group:</strong> {activeGroup.name} &nbsp;·&nbsp;
-              <strong>{activeGroup.members.length} penerima</strong> &nbsp;·&nbsp;
               <strong>Sesi:</strong> {sessions.find(s => s.id === selectedSession)?.name ?? selectedSession}
+              &nbsp;·&nbsp;
+              {blastMode === 'group'
+                ? <><strong>Group:</strong> {groups.find(g => g.id === blastGroupId)?.name} ({groups.find(g => g.id === blastGroupId)?.memberCount ?? 0} anggota)</>
+                : <><strong>{selectedContactIds.length} kontak</strong> dipilih</>
+              }
             </div>
+
+            {/* Group selector (only for group mode) */}
+            {blastMode === 'group' && (
+              <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, fontSize: '0.9rem' }}>Pilih Group</label>
+                <select
+                  value={blastGroupId}
+                  onChange={e => setBlastGroupId(e.target.value)}
+                  disabled={isBlasting}
+                  style={{ width: '100%', padding: '0.625rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary,#1e293b)', outline: 'none' }}
+                >
+                  {groups.map(g => <option key={g.id} value={g.id}>{g.name} ({g.memberCount} anggota)</option>)}
+                </select>
+              </div>
+            )}
+
             <form onSubmit={handleBlast}>
               <div className="form-group">
                 <label htmlFor="blast-msg">Pesan</label>
                 <textarea
                   id="blast-msg"
                   required
+                  disabled={isBlasting}
                   value={blastMessage}
                   onChange={e => setBlastMessage(e.target.value)}
-                  placeholder="Halo {{name}}, ini adalah pengumuman penting dari kami."
+                  placeholder="Halo {{name}}, ini pengumuman penting dari kami."
                   rows={5}
                   style={{ width: '100%', padding: '0.625rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary,#1e293b)', fontSize: '0.95rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
                 />
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>
-                  Gunakan <code style={{ background: 'rgba(0,0,0,0.06)', padding: '0 0.3rem', borderRadius: 3 }}>{'{{name}}'}</code> untuk menyisipkan nama penerima secara otomatis.
+                  Gunakan <code style={{ background: 'rgba(0,0,0,0.06)', padding: '0 0.3rem', borderRadius: 3 }}>{'{{name}}'}</code> untuk menyisipkan nama penerima.
                 </p>
               </div>
               <div className="form-group">
@@ -1055,16 +1188,29 @@ export function Contacts() {
                   min={1000}
                   max={30000}
                   step={500}
+                  disabled={isBlasting}
                   value={blastDelay}
                   onChange={e => setBlastDelay(Number(e.target.value))}
                   style={{ width: '100%', padding: '0.625rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary)', fontSize: '0.9rem', outline: 'none' }}
                 />
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>
-                  Rekomendasi: 3000ms (3 detik). Jeda terlalu pendek berisiko akun WA dibatasi.
-                </p>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>Rekomendasi: 3000ms. Jeda terlalu pendek berisiko akun WA dibatasi.</p>
               </div>
+
+              {/* Progress bar */}
+              {blastProgress && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)', marginBottom: '0.35rem' }}>
+                    <span>Mengirim...</span>
+                    <span>{blastProgress.done}/{blastProgress.total}</span>
+                  </div>
+                  <div style={{ height: 6, background: 'var(--bg-body,#f1f5f9)', borderRadius: 9999 }}>
+                    <div style={{ height: '100%', background: '#16a34a', borderRadius: 9999, width: `${(blastProgress.done / blastProgress.total) * 100}%`, transition: 'width 0.3s' }} />
+                  </div>
+                </div>
+              )}
+
               <div className="modal-actions">
-                <button type="button" className="btn-cancel" onClick={() => setIsBlastOpen(false)}>Batal</button>
+                <button type="button" className="btn-cancel" onClick={() => setIsBlastOpen(false)} disabled={isBlasting}>Batal</button>
                 <button
                   type="submit"
                   className="btn-submit"
@@ -1072,7 +1218,10 @@ export function Contacts() {
                   style={{ background: isBlasting ? undefined : '#16a34a' }}
                 >
                   {isBlasting ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
-                  {isBlasting ? 'Mengirim...' : `Kirim ke ${activeGroup.members.length} Penerima`}
+                  {isBlasting
+                    ? blastProgress ? `Mengirim ${blastProgress.done}/${blastProgress.total}...` : 'Mengirim...'
+                    : `Kirim ke ${blastMode === 'group' ? (groups.find(g => g.id === blastGroupId)?.memberCount ?? 0) : selectedContactIds.length} Penerima`
+                  }
                 </button>
               </div>
             </form>

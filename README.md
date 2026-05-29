@@ -301,6 +301,8 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 ## 📝 Changelog
 
 ### [2026-05-29]
+- **Pembaruan Fitur Blast WA Personal Terpadu (Unified Blast WA Modal)**: Mengintegrasikan dialog pengiriman pesan massal sehingga mendukung pengiriman ke kontak-kontak yang dipilih via checkbox, maupun ke grup sistem tertentu dari satu modal yang sama. Ditambahkan pula progress bar pengiriman real-time untuk pemantauan status pengiriman ke kontak individual.
+- **Fitur Hapus Massal Kontak Terpilih (Bulk Delete)**: Menambahkan fungsionalitas untuk menghapus banyak kontak sekaligus yang dipilih melalui checkbox dengan konfirmasi keamanan sebelum eksekusi.
 - **Refactor Contact Page**: Hapus tab auto-sync kontak WhatsApp yang menyebabkan loading berat saat halaman dibuka. Halaman kontak kini hanya menampilkan kontak yang diimport dari database lokal.
 - **Hapus Tombol "Clear Imported"**: Tombol yang berbahaya (bisa hapus semua kontak sekaligus) dihapus dari UI. Penghapusan kontak tetap bisa dilakukan satu per satu via tombol ❌ di baris tabel.
 - **Fitur System Contact Group**: Menambahkan konsep "Group" baru yang tersimpan di database lokal (bukan WhatsApp Group). Group ini digunakan untuk mengelompokkan kontak untuk keperluan blast WA personal.
