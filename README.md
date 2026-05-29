@@ -300,7 +300,20 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 
 ## 📝 Changelog
 
-### [2026-05-29]
+### [2026-05-29] — Production PostgreSQL Deployment Fix
+
+- **Switch Database ke PostgreSQL**: Migrasi konfigurasi production dari MySQL ke PostgreSQL eksternal yang sudah tersedia (`postgres-stack_ai_net`). Update `docker-compose.prod.yml` dan `.env.example` untuk menggunakan koneksi PostgreSQL.
+- **Auto-Create Database via Container**: Menambahkan service `db-init` di `docker-compose.prod.yml` menggunakan image `postgres:alpine` yang otomatis membuat database `openwa` jika belum ada sebelum API container dijalankan. Tidak perlu install `psql` di server.
+- **Full MySQL Support di Kode**: Menambahkan MySQL datasource di `data-source.ts` dan branch `mysql` di kedua koneksi TypeORM (`main` & `data`) di `app.module.ts`.
+- **Fix Bootstrap `.env.generated`**: Memperbaiki `main.ts` agar saat generate file konfigurasi awal, nilai `DATABASE_TYPE` dan variabel lainnya dibaca dari `process.env` (Docker Compose) bukan hardcoded `sqlite`.
+- **Fix Kompatibilitas TypeORM Entity dengan PostgreSQL**:
+  - `column-types.ts`: Ganti `'timestamp'` → `'timestamptz'` untuk kolom tanggal di PostgreSQL (timezone-aware). Tambah helper `arrayColumnType()` yang mengembalikan `'jsonb'` di PostgreSQL dan `'simple-array'` di SQLite/MySQL.
+  - `api-key.entity.ts`: Ganti `datetime` → `timestamptz`, `simple-array` → `arrayColumnType()`.
+  - `audit-log.entity.ts`: Ganti `simple-json` → `jsonb`.
+- **Fix `keyPrefix` VARCHAR Overflow**: Kolom `keyPrefix` di entity `ApiKey` diperbesar dari `varchar(8)` menjadi `varchar(20)`. Nilai aktual yang dihasilkan (`owa_k1_xxxxx`) berukuran 12 karakter — PostgreSQL strict menolak nilai yang melebihi panjang kolom, berbeda dengan SQLite.
+- **Fix Dockerfile**: Hapus flag `--ignore-scripts` dari `npm ci --omit=dev` di stage `deps` agar native module `sqlite3` ter-compile dengan benar untuk koneksi `main` database.
+
+### [2026-05-29] — Sebelumnya
 - **Optimasi Build Docker (Percepatan Signifikan)**: Refactor `Dockerfile` backend dan `dashboard/Dockerfile` untuk memaksimalkan layer caching Docker:
   - Memisahkan stage instalasi prod-dependencies (`deps`) dari stage build source agar layer `npm ci --omit=dev` ter-cache secara independen—tidak perlu diulang saat source code berubah.
   - Menambahkan flag `--ignore-scripts` di builder stage untuk mencegah `postinstall` memicu instalasi duplikat dependency dashboard.
