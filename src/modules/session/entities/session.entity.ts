@@ -43,6 +43,9 @@ export class Session {
   @Column({ type: 'varchar', length: 255, nullable: true })
   proxyUrl: string | null;
 
+  @Column({ type: 'boolean', default: false })
+  isAiEnabled: boolean;
+
   @Column({ type: 'varchar', length: 10, nullable: true })
   proxyType: 'http' | 'https' | 'socks4' | 'socks5' | null;
 
