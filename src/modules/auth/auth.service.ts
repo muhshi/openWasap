@@ -158,6 +158,26 @@ export class AuthService implements OnModuleInit {
   }
 
   async validateApiKey(rawKey: string, clientIp?: string, sessionId?: string): Promise<ApiKey> {
+    // Check if the provided key matches the master key in .env
+    const masterKey = process.env.API_MASTER_KEY;
+    if (masterKey && rawKey === masterKey) {
+      return {
+        id: 'master-key-id',
+        name: 'Master Key (.env)',
+        keyHash: '',
+        keyPrefix: masterKey.substring(0, 12),
+        role: ApiKeyRole.ADMIN,
+        isActive: true,
+        allowedIps: null,
+        allowedSessions: null,
+        expiresAt: null,
+        lastUsedAt: new Date(),
+        usageCount: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as ApiKey;
+    }
+
     const keyHash = this.hashKey(rawKey);
     const apiKey = await this.apiKeyRepository.findOne({ where: { keyHash } });
 

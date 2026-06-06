@@ -165,20 +165,24 @@ export class ContactGroupService {
   }
 
   // ── Get phone numbers of all members (for blast WA) ──
-  async getMemberPhones(groupId: string, apiKey?: ApiKey): Promise<Array<{ name: string; phone: string }>> {
+  async getMemberPhones(groupId: string, memberIds?: string[], apiKey?: ApiKey): Promise<Array<{ id: string; name: string; phone: string }>> {
     const group = await this.groupRepository.findOne({ where: { id: groupId } });
     if (!group) throw new NotFoundException(`Contact group ${groupId} not found`);
     if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id) {
       throw new UnauthorizedException('You do not have access to this contact group');
     }
 
-    const members = await this.memberRepository.find({
+    let members = await this.memberRepository.find({
       where: { groupId },
       relations: ['contact'],
     });
 
+    if (memberIds && memberIds.length > 0) {
+      members = members.filter((m) => memberIds.includes(m.id));
+    }
+
     return members
       .filter((m) => m.contact?.phone)
-      .map((m) => ({ name: m.contact.name, phone: m.contact.phone }));
+      .map((m) => ({ id: m.id, name: m.contact.name, phone: m.contact.phone }));
   }
 }

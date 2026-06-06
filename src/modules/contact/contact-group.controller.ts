@@ -68,6 +68,11 @@ class BlastMessageDto {
   @ApiProperty({ description: 'Delay antar pesan dalam ms (default: 3000)', required: false, example: 3000 })
   @IsOptional()
   delayMs?: number;
+
+  @ApiProperty({ description: 'ID Member spesifik yang akan di-blast (opsional, jika tidak dikirim maka blast ke semua)', type: [String], required: false })
+  @IsArray()
+  @IsOptional()
+  memberIds?: string[];
 }
 
 // ── Controller ────────────────────────────────────────────────────────────────
@@ -194,7 +199,7 @@ export class ContactGroupController {
     }
 
     // Pastikan user memiliki akses ke group ini
-    const members = await this.contactGroupService.getMemberPhones(id, apiKey);
+    const members = await this.contactGroupService.getMemberPhones(id, dto.memberIds, apiKey);
     if (members.length === 0) {
       throw new BadRequestException('Group tidak memiliki anggota. Tambahkan kontak ke group terlebih dahulu.');
     }

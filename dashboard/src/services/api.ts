@@ -275,10 +275,10 @@ export const contactGroupApi = {
     }),
   removeMember: (id: string, memberId: string) =>
     request<void>(`/contact-groups/${id}/members/${memberId}`, { method: 'DELETE' }),
-  blast: (id: string, sessionId: string, message: string, delayMs?: number) =>
+  blast: (id: string, sessionId: string, message: string, delayMs?: number, memberIds?: string[]) =>
     request<BlastResult>(`/contact-groups/${id}/blast`, {
       method: 'POST',
-      body: JSON.stringify({ sessionId, message, delayMs }),
+      body: JSON.stringify({ sessionId, message, delayMs, memberIds }),
     }),
 };
 

@@ -1,4 +1,5 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index } from 'typeorm';
+import { jsonColumnType } from '../../../common/utils/column-types';
 
 export enum AuditAction {
   // API Key events
@@ -75,8 +76,8 @@ export class AuditLog {
   @Column({ type: 'int', nullable: true })
   statusCode: number | null;
 
-  // jsonb works on PostgreSQL; TypeORM falls back to json/text for other databases
-  @Column({ type: 'jsonb', nullable: true })
+  // dynamic json type depending on database
+  @Column({ type: jsonColumnType(), nullable: true })
   metadata: Record<string, unknown> | null;
 
   @Column({ type: 'text', nullable: true })

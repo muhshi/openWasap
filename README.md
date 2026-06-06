@@ -300,6 +300,16 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 
 ## 📝 Changelog
 
+### [2026-06-06] — Master API Key, Database Agnostic Columns & Group Member Blast
+
+- **Master API Key Support**: Menambahkan validasi `API_MASTER_KEY` dari environment variabel `.env` di `AuthService`. Jika kunci yang dikirimkan cocok dengan master key, user otomatis mendapatkan peran `ADMIN` dengan akses global.
+- **Database-Agnostic Column Types**: Mengganti PostgreSQL-specific `'timestamptz'` dan `'jsonb'` pada entitas `ApiKey` dan `AuditLog` dengan helper `dateColumnType()` dan `jsonColumnType()` agar skema database lebih fleksibel/database-agnostic (misal SQLite/PostgreSQL/MySQL).
+- **Filter Blast WA Per Anggota (Specific Member Blast)**: Memperbarui endpoint `/contact-groups/{id}/blast` dan service `ContactGroupService` agar dapat menerima daftar opsional `memberIds` untuk melakukan blast pesan ke anggota grup tertentu saja (bukan semua anggota).
+- **UI Peningkatan Halaman Kontak (Contacts Page)**:
+  - Menambahkan pagination untuk daftar anggota grup dalam detail grup (`groupPageSize` dan `currentGroupPage`).
+  - Menambahkan modal "Tambahkan Kontak ke Group" dari daftar kontak terpilih (multi-select), lengkap dengan opsi membuat grup baru secara instan.
+  - Mendukung blast pesan ke anggota grup tertentu yang dipilih langsung dari UI detail grup.
+
 ### [2026-05-29] — Production PostgreSQL Deployment Fix
 
 - **Switch Database ke PostgreSQL**: Migrasi konfigurasi production dari MySQL ke PostgreSQL eksternal yang sudah tersedia (`postgres-stack_ai_net`). Update `docker-compose.prod.yml` dan `.env.example` untuk menggunakan koneksi PostgreSQL.

@@ -68,6 +68,7 @@ uploads/
 
 # AI Agents
 .agent/
+.agents/
 .claude/
 docs/plans/
 CLAUDE.md

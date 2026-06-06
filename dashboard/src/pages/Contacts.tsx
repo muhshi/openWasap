@@ -60,6 +60,8 @@ export function Contacts() {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [currentGroupPage, setCurrentGroupPage] = useState(1);
+  const [groupPageSize, setGroupPageSize] = useState(10);
 
   // Add Contact modal
   const [isAddContactOpen, setIsAddContactOpen] = useState(false);
@@ -100,6 +102,15 @@ export function Contacts() {
   const [isBlasting, setIsBlasting] = useState(false);
   const [blastProgress, setBlastProgress] = useState<{ done: number; total: number } | null>(null);
 
+  const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
+
+  // Add-to-group picker modal
+  const [isAddToGroupOpen, setIsAddToGroupOpen] = useState(false);
+  const [addToGroupTarget, setAddToGroupTarget] = useState<string>(''); // existing group ID or '__new__'
+  const [addToGroupNewName, setAddToGroupNewName] = useState('');
+  const [addToGroupNewDesc, setAddToGroupNewDesc] = useState('');
+  const [isAddingToGroup, setIsAddingToGroup] = useState(false);
+
   // Bulk delete
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
 
@@ -133,13 +144,8 @@ export function Contacts() {
 
   useEffect(() => {
     void loadImportedContacts();
-  }, [loadImportedContacts]);
-
-  useEffect(() => {
-    if (mainTab === 'groups') {
-      void loadGroups();
-    }
-  }, [mainTab, loadGroups]);
+    void loadGroups();
+  }, [loadImportedContacts, loadGroups]);
 
   useEffect(() => {
     if (sessions.length > 0 && !selectedSession) {
@@ -286,6 +292,14 @@ export function Contacts() {
     (currentPage - 1) * pageSize,
     currentPage * pageSize
   );
+
+  const totalGroupPages = activeGroup ? Math.ceil(activeGroup.members.length / groupPageSize) : 0;
+  const paginatedGroupMembers = activeGroup
+    ? activeGroup.members.slice(
+        (currentGroupPage - 1) * groupPageSize,
+        currentGroupPage * groupPageSize
+      )
+    : [];
   const isAllSelected =
     paginatedContacts.length > 0 &&
     paginatedContacts.every(c => selectedContactIds.includes(c.id));
@@ -341,10 +355,14 @@ export function Contacts() {
     e.preventDefault();
     setIsCreatingGroup(true);
     try {
-      const group = await contactGroupApi.create(newGroupName.trim(), newGroupDesc.trim() || undefined);
-      setGroups(prev => [...prev, { ...group, memberCount: group.members.length }]);
-      toast.success(`Group "${group.name}" berhasil dibuat.`);
+      const contactIdsToPass = selectedContactIds.length > 0 ? selectedContactIds : undefined;
+      const group = await contactGroupApi.create(newGroupName.trim(), newGroupDesc.trim() || undefined, contactIdsToPass);
+      setGroups(prev => [...prev, { ...group, memberCount: group.members?.length || 0 }]);
+      toast.success(`Group "${group.name}" berhasil dibuat${contactIdsToPass ? ` dengan ${contactIdsToPass.length} kontak` : ''}.`);
       setNewGroupName(''); setNewGroupDesc(''); setIsCreateGroupOpen(false);
+      if (selectedContactIds.length > 0) {
+        setSelectedContactIds([]);
+      }
     } catch (err) {
       toast.error(`Gagal membuat group: ${err instanceof Error ? err.message : ''}`);
     } finally {
@@ -352,7 +370,36 @@ export function Contacts() {
     }
   };
 
+  const handleAddToGroup = async () => {
+    if (selectedContactIds.length === 0) return;
+    setIsAddingToGroup(true);
+    try {
+      if (addToGroupTarget === '__new__') {
+        if (!addToGroupNewName.trim()) { toast.error('Nama group wajib diisi.'); setIsAddingToGroup(false); return; }
+        const group = await contactGroupApi.create(addToGroupNewName.trim(), addToGroupNewDesc.trim() || undefined, selectedContactIds);
+        setGroups(prev => [...prev, { ...group, memberCount: group.members?.length || 0 }]);
+        toast.success(`Group "${group.name}" berhasil dibuat dengan ${selectedContactIds.length} kontak.`);
+      } else {
+        const result = await contactGroupApi.addMembers(addToGroupTarget, selectedContactIds);
+        const targetGroup = groups.find(g => g.id === addToGroupTarget);
+        toast.success(`${result.added} kontak ditambahkan ke "${targetGroup?.name || 'group'}".${result.skipped > 0 ? ` (${result.skipped} sudah ada)` : ''}`);
+        // Refresh groups list to update member counts
+        const updatedGroups = await contactGroupApi.list();
+        setGroups(updatedGroups);
+      }
+      setSelectedContactIds([]);
+      setIsAddToGroupOpen(false);
+      setAddToGroupTarget(''); setAddToGroupNewName(''); setAddToGroupNewDesc('');
+    } catch (err) {
+      toast.error(`Gagal menambahkan ke group: ${err instanceof Error ? err.message : ''}`);
+    } finally {
+      setIsAddingToGroup(false);
+    }
+  };
+
   const openGroupDetail = async (groupId: string) => {
+    setSelectedGroupMemberIds([]);
+    setCurrentGroupPage(1);
     setIsLoadingGroupDetail(true);
     setGroupView('detail');
     try {
@@ -478,8 +525,12 @@ export function Contacts() {
       if (blastMode === 'group') {
         // Backend handles group blast
         if (!blastGroupId) { toast.error('Pilih group terlebih dahulu.'); return; }
-        const result = await contactGroupApi.blast(blastGroupId, selectedSession, blastMessage.trim(), blastDelay);
+        const memberIdsToBlast = selectedGroupMemberIds.length > 0 ? selectedGroupMemberIds : undefined;
+        const result = await contactGroupApi.blast(blastGroupId, selectedSession, blastMessage.trim(), blastDelay, memberIdsToBlast);
         toast.success(result.message);
+        if (selectedGroupMemberIds.length > 0) {
+          setSelectedGroupMemberIds([]);
+        }
       } else {
         // Frontend loop for selected contacts
         const targets = importedContacts.filter(c => selectedContactIds.includes(c.id));
@@ -620,7 +671,7 @@ export function Contacts() {
                   <button
                     className="add-contact-btn"
                     style={{ marginTop: '0.5rem', background: 'rgba(37,99,235,0.08)', color: 'var(--primary-color,#2563eb)', border: '1px solid rgba(37,99,235,0.2)' }}
-                    onClick={() => { setMainTab('groups'); }}
+                    onClick={() => { setAddToGroupTarget(groups.length > 0 ? groups[0].id : '__new__'); setIsAddToGroupOpen(true); }}
                   >
                     <FolderOpen size={16} /> Tambahkan ke Group
                   </button>
@@ -826,10 +877,10 @@ export function Contacts() {
                             <FolderOpen size={18} style={{ color: 'var(--primary-color,#2563eb)', flexShrink: 0 }} />
                             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary,#1e293b)' }}>{group.name}</h3>
                           </div>
-                          {group.description && (
-                            <p style={{ margin: '0.25rem 0 0.5rem 1.625rem', fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)', lineHeight: 1.4 }}>{group.description}</p>
-                          )}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.5rem', marginLeft: '1.625rem' }}>
+                          <p style={{ margin: '0.25rem 0 0.5rem 1.625rem', fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)', lineHeight: 1.4, minHeight: '1.2em' }}>
+                            {group.description || '\u00A0'}
+                          </p>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginLeft: '1.625rem' }}>
                             <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary,#64748b)' }}>
                               <Users size={13} style={{ display: 'inline', verticalAlign: 'middle', marginRight: 3 }} />
                               {group.memberCount} anggota
@@ -850,7 +901,7 @@ export function Contacts() {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.75rem', gap: '0.5rem' }} onClick={e => e.stopPropagation()}>
                         <button
                           className="btn-submit"
-                          style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem', background: '#16a34a', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                          style={{ fontSize: '0.78rem', padding: '0.35rem 0.75rem', background: '#16a34a', color: '#fff', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                           disabled={!selectedSession || group.memberCount === 0}
                           title={!selectedSession ? 'Pilih sesi WA terlebih dahulu di tab Contacts' : group.memberCount === 0 ? 'Group kosong' : `Blast WA ke ${group.memberCount} anggota`}
                           onClick={() => openBlastModal('group', group.id)}
@@ -909,7 +960,10 @@ export function Contacts() {
                           style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
                           title={!activeGroup.members.length ? 'Tambahkan anggota terlebih dahulu' : ''}
                         >
-                          <Send size={14} /> Blast WA Personal
+                          <Send size={14} /> 
+                          {selectedGroupMemberIds.length > 0 
+                            ? `Blast WA ke ${selectedGroupMemberIds.length} Terpilih` 
+                            : 'Blast WA Personal'}
                         </button>
                       )}
                     </div>
@@ -944,32 +998,103 @@ export function Contacts() {
                       </button>
                     </div>
                   ) : (
-                    <table className="contacts-table">
-                      <thead>
-                        <tr>
-                          <th>Nama</th>
-                          <th>Nomor</th>
-                          <th style={{ width: 80, textAlign: 'right' }}>Aksi</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {activeGroup.members.map(m => (
-                          <tr key={m.id}>
-                            <td className="contact-name">{m.name}</td>
-                            <td className="contact-phone mono">+{m.phone}</td>
-                            <td style={{ textAlign: 'right' }}>
-                              <button
-                                className="delete-row-btn"
-                                title="Hapus dari group"
-                                onClick={() => handleRemoveMember(m.id, m.name)}
-                              >
-                                <X size={14} />
-                              </button>
-                            </td>
+                    <>
+                      <table className="contacts-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 40 }}>
+                              <input 
+                                type="checkbox" 
+                                checked={activeGroup.members.length > 0 && selectedGroupMemberIds.length === activeGroup.members.length} 
+                                onChange={() => {
+                                  if (selectedGroupMemberIds.length === activeGroup.members.length) {
+                                    setSelectedGroupMemberIds([]);
+                                  } else {
+                                    setSelectedGroupMemberIds(activeGroup.members.map(m => m.id));
+                                  }
+                                }} 
+                              />
+                            </th>
+                            <th>Nama</th>
+                            <th>Nomor</th>
+                            <th style={{ width: 80, textAlign: 'right' }}>Aksi</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {paginatedGroupMembers.map(m => {
+                            const isSelected = selectedGroupMemberIds.includes(m.id);
+                            return (
+                            <tr 
+                              key={m.id}
+                              className={isSelected ? 'selected-row' : ''}
+                              onClick={() => setSelectedGroupMemberIds(prev => prev.includes(m.id) ? prev.filter(id => id !== m.id) : [...prev, m.id])}
+                            >
+                              <td onClick={e => e.stopPropagation()}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={isSelected} 
+                                  onChange={() => setSelectedGroupMemberIds(prev => prev.includes(m.id) ? prev.filter(id => id !== m.id) : [...prev, m.id])}
+                                />
+                              </td>
+                              <td className="contact-name"><span>{m.name}</span></td>
+                              <td className="contact-phone mono">+{m.phone}</td>
+                              <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+                                <button
+                                  className="delete-row-btn"
+                                  title="Hapus dari group"
+                                  onClick={() => handleRemoveMember(m.id, m.name)}
+                                >
+                                  <X size={14} />
+                                </button>
+                              </td>
+                            </tr>
+                          )})}
+                        </tbody>
+                      </table>
+
+                      {activeGroup.members.length > 0 && (
+                        <div className="pagination-controls" style={{ marginTop: '1rem', padding: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary,#64748b)' }}>
+                          Showing {activeGroup.members.length === 0 ? 0 : (currentGroupPage - 1) * groupPageSize + 1} –{' '}
+                          {Math.min(activeGroup.members.length, currentGroupPage * groupPageSize)} of {activeGroup.members.length}
+                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                          <div className="pagination-buttons">
+                            <button
+                              className="page-btn"
+                              disabled={currentGroupPage === 1}
+                              onClick={() => setCurrentGroupPage(prev => Math.max(1, prev - 1))}
+                            >
+                              &lt; Prev
+                            </button>
+                            <span className="page-indicator">Page {currentGroupPage} of {totalGroupPages || 1}</span>
+                            <button
+                              className="page-btn"
+                              disabled={currentGroupPage >= totalGroupPages}
+                              onClick={() => setCurrentGroupPage(prev => Math.min(totalGroupPages, prev + 1))}
+                            >
+                              Next &gt;
+                            </button>
+                          </div>
+                          <div className="page-size-selector">
+                            <select
+                              className="page-size-select"
+                              value={groupPageSize}
+                              onChange={(e) => {
+                                setGroupPageSize(Number(e.target.value));
+                                setCurrentGroupPage(1);
+                              }}
+                            >
+                              <option value={10}>10 / page</option>
+                              <option value={25}>25 / page</option>
+                              <option value={50}>50 / page</option>
+                              <option value={100}>100 / page</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    </>
                   )}
                 </div>
               )}
@@ -1025,9 +1150,16 @@ export function Contacts() {
                 <label htmlFor="group-desc">Deskripsi (opsional)</label>
                 <input id="group-desc" type="text" value={newGroupDesc} onChange={e => setNewGroupDesc(e.target.value)} placeholder="Contoh: Group untuk blast info pesantren" />
               </div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)', marginBottom: '1rem' }}>
-                💡 Setelah dibuat, tambahkan kontak ke group dari halaman detail group.
-              </p>
+              {selectedContactIds.length > 0 && (
+                <p style={{ fontSize: '0.8rem', color: '#16a34a', fontWeight: 600, marginBottom: '1rem' }}>
+                  ✅ {selectedContactIds.length} kontak yang dipilih akan otomatis ditambahkan ke group ini.
+                </p>
+              )}
+              {selectedContactIds.length === 0 && (
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)', marginBottom: '1rem' }}>
+                  💡 Setelah dibuat, tambahkan kontak ke group dari halaman detail group.
+                </p>
+              )}
               <div className="modal-actions">
                 <button type="button" className="btn-cancel" onClick={() => setIsCreateGroupOpen(false)}>Batal</button>
                 <button type="submit" className="btn-submit" disabled={isCreatingGroup || !newGroupName.trim()}>
@@ -1036,6 +1168,73 @@ export function Contacts() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add to Group Picker */}
+      {isAddToGroupOpen && (
+        <div className="modal-overlay" onClick={() => setIsAddToGroupOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Tambahkan {selectedContactIds.length} Kontak ke Group</h2>
+              <button className="close-modal-btn" onClick={() => setIsAddToGroupOpen(false)}><X size={20} /></button>
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                Pilih Group Tujuan
+              </label>
+              <select
+                value={addToGroupTarget}
+                onChange={e => setAddToGroupTarget(e.target.value)}
+                style={{ width: '100%', padding: '0.6rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary)', fontSize: '0.875rem' }}
+              >
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name} ({g.memberCount} anggota)</option>
+                ))}
+                <option value="__new__">➕ Buat Group Baru...</option>
+              </select>
+            </div>
+
+            {addToGroupTarget === '__new__' && (
+              <>
+                <div className="form-group">
+                  <label>Nama Group Baru</label>
+                  <input
+                    type="text"
+                    value={addToGroupNewName}
+                    onChange={e => setAddToGroupNewName(e.target.value)}
+                    placeholder="Contoh: Tim Santri 2024"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Deskripsi (opsional)</label>
+                  <input
+                    type="text"
+                    value={addToGroupNewDesc}
+                    onChange={e => setAddToGroupNewDesc(e.target.value)}
+                    placeholder="Contoh: Group untuk blast info pesantren"
+                  />
+                </div>
+              </>
+            )}
+
+            <p style={{ fontSize: '0.8rem', color: '#16a34a', fontWeight: 600, marginBottom: '1rem' }}>
+              ✅ {selectedContactIds.length} kontak yang dipilih akan ditambahkan.
+            </p>
+
+            <div className="modal-actions">
+              <button type="button" className="btn-cancel" onClick={() => setIsAddToGroupOpen(false)}>Batal</button>
+              <button
+                type="button"
+                className="btn-submit"
+                disabled={isAddingToGroup || (addToGroupTarget === '__new__' && !addToGroupNewName.trim()) || (!addToGroupTarget)}
+                onClick={handleAddToGroup}
+              >
+                {isAddingToGroup ? <Loader2 className="animate-spin" size={16} /> : <Check size={16} />}
+                {isAddingToGroup ? 'Menambahkan...' : addToGroupTarget === '__new__' ? 'Buat & Tambahkan' : 'Tambahkan ke Group'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1220,7 +1419,7 @@ export function Contacts() {
                   {isBlasting ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
                   {isBlasting
                     ? blastProgress ? `Mengirim ${blastProgress.done}/${blastProgress.total}...` : 'Mengirim...'
-                    : `Kirim ke ${blastMode === 'group' ? (groups.find(g => g.id === blastGroupId)?.memberCount ?? 0) : selectedContactIds.length} Penerima`
+                    : `Kirim ke ${blastMode === 'group' ? (selectedGroupMemberIds.length > 0 ? selectedGroupMemberIds.length : (groups.find(g => g.id === blastGroupId)?.memberCount ?? 0)) : selectedContactIds.length} Penerima`
                   }
                 </button>
               </div>

@@ -1,6 +1,18 @@
 {
   "version": 1,
   "skills": {
+    "nestjs-best-practices": {
+      "source": "kadajett/agent-nestjs-skills",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "1b6f82e889d19d305e38e35594de08eca0242321f353cafa4cf5e61dd3aa1a73"
+    },
+    "nestjs-patterns": {
+      "source": "affaan-m/everything-claude-code",
+      "sourceType": "github",
+      "skillPath": "skills/nestjs-patterns/SKILL.md",
+      "computedHash": "0ff35d7a72bb462f51629b38dcb525ab0368ff755cbd1cf121c144e7d05f12a1"
+    },
     "react": {
       "source": "vercel-labs/json-render",
       "sourceType": "github",
@@ -12,6 +24,12 @@
       "sourceType": "github",
       "skillPath": "plugins/stitch-build/skills/react-components/SKILL.md",
       "computedHash": "558c6619e28aaf6222828591e531bfc83c2f4fbb2fda3d02300d92b2ca9fa709"
+    },
+    "supabase-postgres-best-practices": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
+      "computedHash": "0d2c4857a7d6fdcd3fbc46e458fa4c497f029cab89a01548b3defce203003932"
     }
   }
 }
