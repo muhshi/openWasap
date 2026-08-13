@@ -10,7 +10,7 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty, ApiSecurity } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsObject, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContactGroupService } from './contact-group.service';
@@ -107,9 +107,11 @@ export class BpsImportDto {
   contacts: ContactWithMetadataDto[];
 }
 
+
 // ── Controller ────────────────────────────────────────────────────────────────
 
 @ApiTags('contact-groups')
+@ApiSecurity('X-API-Key')
 @Controller('contact-groups')
 export class ContactGroupController {
   constructor(

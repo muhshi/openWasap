@@ -262,7 +262,12 @@ export const contactGroupApi = {
       method: 'POST',
       body: JSON.stringify({ name, description, contactIds }),
     }),
-  update: (id: string, name?: string, description?: string) =>
+  bpsImport: (groupName: string, contacts: any[]) =>
+    request<{ success: boolean; message: string; data: any }>('/contact-groups/bps-import', {
+      method: 'POST',
+      body: JSON.stringify({ groupName, contacts }),
+    }),
+  update: (id: string, name: string, description?: string) =>
     request<ContactGroup>(`/contact-groups/${id}`, {
       method: 'PUT',
       body: JSON.stringify({ name, description }),

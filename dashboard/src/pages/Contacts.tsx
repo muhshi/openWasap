@@ -40,6 +40,7 @@ export function Contacts() {
   const { canWrite } = useRole();
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bpsFileInputRef = useRef<HTMLInputElement>(null);
 
   // Sessions
   const { data: allSessions = [], isLoading: loadingSessions } = useSessionsQuery();
@@ -246,6 +247,98 @@ export function Contacts() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) processFile(file);
+    e.target.value = '';
+  };
+
+  const handleBpsFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
+
+        // 1. Parsing and Grouping Contacts
+        const groupsMap: Record<string, any[]> = {};
+        let totalValidContacts = 0;
+
+        for (const row of json) {
+          const nameRaw = findColumnValue(row, ['name', 'nama', 'full name', 'nama lengkap', 'display name', 'petugas']);
+          const phoneRaw = findColumnValue(row, ['phone', 'phone number', 'no hp', 'number', 'no telepon', 'no telp', 'telepon', 'whatsapp', 'telp', 'nomer']);
+          const phone = cleanPhoneNumber(phoneRaw);
+          
+          if (!phone) continue; // Skip invalid numbers
+
+          const wilayahRaw = findColumnValue(row, ['wilayah', 'region', 'kecamatan', 'desa']);
+          const tugasRaw = findColumnValue(row, ['tugas', 'task', 'pekerjaan', 'jabatan']);
+          
+          const wilayah = wilayahRaw ? String(wilayahRaw).trim() : 'Tanpa Wilayah';
+          const tugas = tugasRaw ? String(tugasRaw).trim() : 'Tanpa Tugas';
+          const groupName = `${wilayah} - ${tugas}`;
+          
+          // Semua sisa kolom dimasukkan ke metadata
+          const metadata = { ...row };
+          
+          // Hapus key yang sudah direkstrak agar rapi
+          const rowKeys = Object.keys(row);
+          const nameKey = rowKeys.find(rk => ['name', 'nama', 'full name', 'nama lengkap', 'display name', 'petugas'].includes(rk.toLowerCase().trim()));
+          const phoneKey = rowKeys.find(rk => ['phone', 'phone number', 'no hp', 'number', 'no telepon', 'no telp', 'telepon', 'whatsapp', 'telp', 'nomer'].includes(rk.toLowerCase().trim()));
+          
+          if (nameKey) delete metadata[nameKey];
+          if (phoneKey) delete metadata[phoneKey];
+
+          const contactPayload = {
+            name: nameRaw || `Contact ${phone}`,
+            phoneNumber: phone,
+            metadata: metadata
+          };
+
+          if (!groupsMap[groupName]) {
+            groupsMap[groupName] = [];
+          }
+          groupsMap[groupName].push(contactPayload);
+          totalValidContacts++;
+        }
+
+        const groupNames = Object.keys(groupsMap);
+        if (groupNames.length === 0) {
+          toast.error('Tidak ada kontak dengan nomor HP yang valid ditemukan di file Excel.');
+          return;
+        }
+
+        // 2. Sequential API calls per group
+        setIsLoadingGroups(true);
+        let successGroups = 0;
+        let failGroups = 0;
+
+        for (const [groupName, contactsPayload] of Object.entries(groupsMap)) {
+          try {
+            await contactGroupApi.bpsImport(groupName, contactsPayload);
+            successGroups++;
+          } catch (err) {
+            console.error(`Gagal import grup ${groupName}:`, err);
+            failGroups++;
+          }
+        }
+
+        if (failGroups === 0) {
+          toast.success(`Berhasil membuat ${successGroups} grup secara otomatis dengan total ${totalValidContacts} kontak.`);
+        } else {
+          toast.success(`Selesai! ${successGroups} grup berhasil dibuat, ${failGroups} grup gagal.`);
+        }
+        
+        await loadGroups();
+      } catch (err) {
+        toast.error(`Gagal memproses file BPS: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      } finally {
+        setIsLoadingGroups(false);
+      }
+    };
+    reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
@@ -838,12 +931,29 @@ export function Contacts() {
                   </select>
                 </div>
                 {canWrite && (
-                  <button
-                    className="btn-submit"
-                    onClick={() => setIsCreateGroupOpen(true)}
-                  >
-                    <Plus size={16} /> Buat Group Baru
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input
+                      type="file"
+                      ref={bpsFileInputRef}
+                      onChange={handleBpsFileChange}
+                      accept=".xlsx,.xls"
+                      style={{ display: 'none' }}
+                    />
+                    <button
+                      className="btn-submit"
+                      style={{ backgroundColor: '#10b981' }} // emerald color for excel
+                      onClick={() => bpsFileInputRef.current?.click()}
+                      disabled={isLoadingGroups}
+                    >
+                      <FileSpreadsheet size={16} /> Import Excel BPS
+                    </button>
+                    <button
+                      className="btn-submit"
+                      onClick={() => setIsCreateGroupOpen(true)}
+                    >
+                      <Plus size={16} /> Buat Group Baru
+                    </button>
+                  </div>
                 )}
               </div>
 

@@ -162,6 +162,7 @@ async function bootstrap() {
     .addTag('labels', 'Label management (WhatsApp Business)')
     .addTag('channels', 'Channel/Newsletter management')
     .addTag('health', 'Health check endpoints')
+    .addSecurityRequirements('X-API-Key')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
