@@ -1,11 +1,27 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { ContactGroup } from './entities/contact-group.entity';
 import { ContactGroupMember } from './entities/contact-group-member.entity';
 import { ImportedContact } from './entities/imported-contact.entity';
 import { ApiKey, ApiKeyRole } from '../auth/entities/api-key.entity';
+import { v4 as uuidv4 } from 'uuid';
 
+export interface ContactWithMetadata {
+  name: string;
+  phoneNumber: string;
+  metadata?: Record<string, any>;
+}
+
+export interface BpsImportPayload {
+  groupName: string;
+  contacts: ContactWithMetadata[];
+}
+
+export interface BulkAddPayload {
+  groupId: string;
+  contacts: ContactWithMetadata[];
+}
 export interface ContactGroupWithCount extends ContactGroup {
   memberCount: number;
 }
@@ -184,5 +200,89 @@ export class ContactGroupService {
     return members
       .filter((m) => m.contact?.phone)
       .map((m) => ({ id: m.id, name: m.contact.name, phone: m.contact.phone }));
+  }
+
+  // ── Auto-import BPS Flow ──
+  async processBpsImport(payload: BpsImportPayload, ownerApiKeyId: string): Promise<ContactGroup> {
+    const newGroup = this.groupRepository.create({
+      name: payload.groupName,
+      description: 'Diimpor otomatis dari Excel BPS',
+      ownerApiKeyId,
+    });
+    const savedGroup = await this.groupRepository.save(newGroup);
+
+    await this.bulkAddFromExcel({
+      groupId: savedGroup.id,
+      contacts: payload.contacts
+    }, ownerApiKeyId);
+
+    return savedGroup;
+  }
+
+  // ── Optimized Bulk Insert for Contacts & Members ──
+  async bulkAddFromExcel(payload: BulkAddPayload, ownerApiKeyId: string): Promise<void> {
+    const { groupId, contacts } = payload;
+    const CHUNK_SIZE = 1000;
+
+    const phoneNumbers = [...new Set(contacts.map(c => c.phoneNumber))];
+
+    const existingContacts = await this.contactRepository.find({
+      where: { phone: In(phoneNumbers), ownerApiKeyId },
+      select: ['id', 'phone'],
+    });
+
+    const existingPhonesMap = new Map(existingContacts.map(c => [c.phone, c.id]));
+    
+    const newContactsToInsert = [];
+    const contactMapForGroup = new Map<string, { contactId: string; metadata: any }>();
+
+    for (const rawContact of contacts) {
+      let contactId = existingPhonesMap.get(rawContact.phoneNumber);
+
+      if (!contactId) {
+        contactId = uuidv4();
+        newContactsToInsert.push({
+          id: contactId,
+          name: rawContact.name,
+          phone: rawContact.phoneNumber, // ImportedContact entity uses 'phone', not 'phoneNumber'
+          ownerApiKeyId,
+        });
+        existingPhonesMap.set(rawContact.phoneNumber, contactId);
+      }
+
+      contactMapForGroup.set(rawContact.phoneNumber, {
+        contactId,
+        metadata: rawContact.metadata || null,
+      });
+    }
+
+    if (newContactsToInsert.length > 0) {
+      for (let i = 0; i < newContactsToInsert.length; i += CHUNK_SIZE) {
+        const chunk = newContactsToInsert.slice(i, i + CHUNK_SIZE);
+        await this.contactRepository
+          .createQueryBuilder()
+          .insert()
+          .into(ImportedContact)
+          .values(chunk)
+          .orIgnore() 
+          .execute();
+      }
+    }
+
+    const groupMembersToInsert = Array.from(contactMapForGroup.values()).map(item => ({
+      groupId,
+      contactId: item.contactId,
+      metadata: item.metadata,
+    }));
+
+    for (let i = 0; i < groupMembersToInsert.length; i += CHUNK_SIZE) {
+      const chunk = groupMembersToInsert.slice(i, i + CHUNK_SIZE);
+      await this.memberRepository
+        .createQueryBuilder()
+        .insert()
+        .into(ContactGroupMember)
+        .values(chunk)
+        .execute();
+    }
   }
 }

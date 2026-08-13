@@ -1,5 +1,7 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
+import { jsonColumnType } from '../../../common/utils/column-types';
+
 @Entity('knowledges')
 export class Knowledge {
   @PrimaryGeneratedColumn('uuid')
@@ -8,7 +10,7 @@ export class Knowledge {
   @Column({ type: 'text' })
   content: string;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ type: jsonColumnType(), nullable: true })
   metadata: Record<string, any>;
 
   // Postgres pgvector support. 

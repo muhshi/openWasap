@@ -11,7 +11,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsArray } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsObject, Matches } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ContactGroupService } from './contact-group.service';
 import { SessionService } from '../session/session.service';
 import { CurrentApiKey } from '../auth/decorators/auth.decorators';
@@ -73,6 +74,37 @@ class BlastMessageDto {
   @IsArray()
   @IsOptional()
   memberIds?: string[];
+}
+
+export class ContactWithMetadataDto {
+  @ApiProperty({ description: 'Nama kontak', example: 'Budi' })
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @ApiProperty({ description: 'Nomor telepon kontak', example: '628123456789' })
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^[0-9]+$/, { message: 'Nomor telepon hanya boleh berisi angka' })
+  phoneNumber: string;
+
+  @ApiProperty({ description: 'Data tambahan (tugas spesifik, dll)', required: false, type: Object })
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, any>;
+}
+
+export class BpsImportDto {
+  @ApiProperty({ description: 'Nama group yang akan dibuat', example: 'Grup Sensus BPS 2026' })
+  @IsString()
+  @IsNotEmpty()
+  groupName: string;
+
+  @ApiProperty({ description: 'Daftar kontak untuk diimpor beserta metadatanya', type: [ContactWithMetadataDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ContactWithMetadataDto)
+  contacts: ContactWithMetadataDto[];
 }
 
 // ── Controller ────────────────────────────────────────────────────────────────
@@ -235,6 +267,22 @@ export class ContactGroupController {
       sessionId: dto.sessionId,
       groupId: id,
       message: `Blast ke ${members.length} anggota sedang diproses. Pesan dikirim dengan jeda ${delayMs}ms antar penerima.`,
+    };
+  }
+
+  @Post('bps-import')
+  @ApiOperation({ summary: 'Import data BPS dari Excel (Auto-create group & contacts)' })
+  @ApiBody({ type: BpsImportDto })
+  @ApiResponse({ status: 201, description: 'Grup dan kontak berhasil diimpor' })
+  async importBpsData(@Body() payload: BpsImportDto, @CurrentApiKey() apiKey: ApiKey) {
+    const group = await this.contactGroupService.processBpsImport(payload, apiKey.id);
+    
+    return {
+      success: true,
+      message: `Grup kontak '${group.name}' berhasil dibuat beserta seluruh anggotanya.`,
+      data: {
+        groupId: group.id
+      }
     };
   }
 }
