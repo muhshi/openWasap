@@ -255,13 +255,11 @@
     "rolesTitle": "מדריך תפקידים",
     "roles": {
       "admin": "Admin",
-      "operator": "Operator",
-      "viewer": "Viewer"
+      "user": "משתמש"
     },
     "roleDescriptions": {
       "admin": "גישה מלאה לכל המשאבים",
-      "operator": "ניהול Sessions והודעות",
-      "viewer": "גישת קריאה בלבד"
+      "user": "ניהול Sessions, הודעות ואנשי קשר"
     },
     "columns": {
       "name": "שם",

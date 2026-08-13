@@ -10,7 +10,7 @@ function createMockApiKey(overrides: Partial<ApiKey> = {}): ApiKey {
     name: 'Test Key',
     keyHash: 'hash',
     keyPrefix: 'owa_k1_xxxx',
-    role: ApiKeyRole.OPERATOR,
+    role: ApiKeyRole.USER,
     allowedIps: null,
     allowedSessions: null,
     isActive: true,
@@ -123,7 +123,7 @@ describe('ApiKeyGuard', () => {
       .mockReturnValueOnce(false) // not public
       .mockReturnValueOnce(ApiKeyRole.ADMIN); // required role = ADMIN
 
-    const apiKey = createMockApiKey({ role: ApiKeyRole.VIEWER });
+    const apiKey = createMockApiKey({ role: ApiKeyRole.USER });
     (authService.validateApiKey as jest.Mock).mockResolvedValue(apiKey);
     (authService.hasPermission as jest.Mock).mockReturnValue(false);
 

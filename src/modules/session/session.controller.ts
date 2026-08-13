@@ -32,7 +32,7 @@ export class SessionController {
   }
 
   @Post()
-  @RequireRole(ApiKeyRole.OPERATOR)
+  @RequireRole(ApiKeyRole.USER)
   @ApiOperation({ summary: 'Create a new WhatsApp session' })
   @ApiResponse({
     status: 201,
@@ -82,7 +82,7 @@ export class SessionController {
   }
 
   @Delete(':id')
-  @RequireRole(ApiKeyRole.OPERATOR)
+  @RequireRole(ApiKeyRole.USER)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a session' })
   @ApiParam({ name: 'id', description: 'Session ID' })
@@ -101,7 +101,7 @@ export class SessionController {
   }
 
   @Post(':id/start')
-  @RequireRole(ApiKeyRole.OPERATOR)
+  @RequireRole(ApiKeyRole.USER)
   @ApiOperation({
     summary: 'Start a session and initialize WhatsApp connection',
   })
@@ -127,7 +127,7 @@ export class SessionController {
   }
 
   @Post(':id/stop')
-  @RequireRole(ApiKeyRole.OPERATOR)
+  @RequireRole(ApiKeyRole.USER)
   @ApiOperation({ summary: 'Stop a session and disconnect WhatsApp' })
   @ApiParam({ name: 'id', description: 'Session ID' })
   @ApiResponse({

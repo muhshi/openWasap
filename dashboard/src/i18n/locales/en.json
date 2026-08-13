@@ -255,13 +255,11 @@
     "rolesTitle": "Roles Reference",
     "roles": {
       "admin": "Admin",
-      "operator": "Operator",
-      "viewer": "Viewer"
+      "user": "User"
     },
     "roleDescriptions": {
       "admin": "Full access to all resources",
-      "operator": "Session & message management",
-      "viewer": "Read-only access"
+      "user": "Session, message & contacts management"
     },
     "columns": {
       "name": "Name",

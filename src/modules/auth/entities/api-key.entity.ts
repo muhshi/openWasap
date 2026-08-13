@@ -3,8 +3,7 @@ import { arrayColumnType, dateColumnType } from '../../../common/utils/column-ty
 
 export enum ApiKeyRole {
   ADMIN = 'admin',
-  OPERATOR = 'operator',
-  VIEWER = 'viewer',
+  USER = 'user',
 }
 
 @Entity('api_keys')
@@ -25,7 +24,7 @@ export class ApiKey {
   @Column({
     type: 'varchar',
     length: 20,
-    default: ApiKeyRole.OPERATOR,
+    default: ApiKeyRole.USER,
   })
   role: ApiKeyRole;
 

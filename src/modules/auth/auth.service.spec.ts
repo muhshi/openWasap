@@ -15,7 +15,7 @@ function createMockApiKey(overrides: Partial<ApiKey> = {}): ApiKey {
     name: 'Test Key',
     keyHash: hashKey('test-key'),
     keyPrefix: 'test-key-pre',
-    role: ApiKeyRole.OPERATOR,
+    role: ApiKeyRole.USER,
     allowedIps: null,
     allowedSessions: null,
     isActive: true,
@@ -70,7 +70,7 @@ describe('AuthService', () => {
       expect(repository.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: 'My Key',
-          role: ApiKeyRole.OPERATOR, // default
+          role: ApiKeyRole.USER, // default
         }),
       );
     });
@@ -138,7 +138,7 @@ describe('AuthService', () => {
       const result = await service.update('uuid-1', { name: 'Updated' });
 
       expect(result.name).toBe('Updated');
-      expect(result.role).toBe(ApiKeyRole.OPERATOR); // unchanged
+      expect(result.role).toBe(ApiKeyRole.USER); // unchanged
     });
   });
 
@@ -255,23 +255,18 @@ describe('AuthService', () => {
       expect(service.hasPermission(key, ApiKeyRole.ADMIN)).toBe(true);
     });
 
-    it('should allow ADMIN to access OPERATOR routes', () => {
+    it('should allow ADMIN to access USER routes', () => {
       const key = createMockApiKey({ role: ApiKeyRole.ADMIN });
-      expect(service.hasPermission(key, ApiKeyRole.OPERATOR)).toBe(true);
+      expect(service.hasPermission(key, ApiKeyRole.USER)).toBe(true);
     });
 
-    it('should allow ADMIN to access VIEWER routes', () => {
-      const key = createMockApiKey({ role: ApiKeyRole.ADMIN });
-      expect(service.hasPermission(key, ApiKeyRole.VIEWER)).toBe(true);
+    it('should allow USER to access USER routes', () => {
+      const key = createMockApiKey({ role: ApiKeyRole.USER });
+      expect(service.hasPermission(key, ApiKeyRole.USER)).toBe(true);
     });
 
-    it('should deny VIEWER access to OPERATOR routes', () => {
-      const key = createMockApiKey({ role: ApiKeyRole.VIEWER });
-      expect(service.hasPermission(key, ApiKeyRole.OPERATOR)).toBe(false);
-    });
-
-    it('should deny OPERATOR access to ADMIN routes', () => {
-      const key = createMockApiKey({ role: ApiKeyRole.OPERATOR });
+    it('should deny USER access to ADMIN routes', () => {
+      const key = createMockApiKey({ role: ApiKeyRole.USER });
       expect(service.hasPermission(key, ApiKeyRole.ADMIN)).toBe(false);
     });
   });

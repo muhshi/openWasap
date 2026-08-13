@@ -100,7 +100,7 @@ export class AuthService implements OnModuleInit {
       name: dto.name,
       keyHash,
       keyPrefix,
-      role: dto.role || ApiKeyRole.OPERATOR,
+      role: dto.role || ApiKeyRole.USER,
       allowedIps: dto.allowedIps || null,
       allowedSessions: dto.allowedSessions || null,
       expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null,
@@ -278,8 +278,7 @@ export class AuthService implements OnModuleInit {
 
   hasPermission(apiKey: ApiKey, requiredRole: ApiKeyRole): boolean {
     const roleHierarchy: Record<ApiKeyRole, number> = {
-      [ApiKeyRole.VIEWER]: 1,
-      [ApiKeyRole.OPERATOR]: 2,
+      [ApiKeyRole.USER]: 1,
       [ApiKeyRole.ADMIN]: 3,
     };
 

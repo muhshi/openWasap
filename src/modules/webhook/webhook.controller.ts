@@ -12,7 +12,7 @@ export class WebhookController {
   constructor(private readonly webhookService: WebhookService) {}
 
   @Post()
-  @RequireRole(ApiKeyRole.OPERATOR)
+  @RequireRole(ApiKeyRole.USER)
   @ApiOperation({ summary: 'Create a webhook for the session' })
   @ApiParam({ name: 'sessionId', description: 'Session ID' })
   @ApiResponse({
@@ -51,7 +51,7 @@ export class WebhookController {
   }
 
   @Put(':id')
-  @RequireRole(ApiKeyRole.OPERATOR)
+  @RequireRole(ApiKeyRole.USER)
   @ApiOperation({ summary: 'Update a webhook' })
   @ApiParam({ name: 'sessionId', description: 'Session ID' })
   @ApiParam({ name: 'id', description: 'Webhook ID' })
@@ -66,7 +66,7 @@ export class WebhookController {
   }
 
   @Post(':id/test')
-  @RequireRole(ApiKeyRole.OPERATOR)
+  @RequireRole(ApiKeyRole.USER)
   @ApiOperation({ summary: 'Test a webhook by sending a test payload' })
   @ApiParam({ name: 'sessionId', description: 'Session ID' })
   @ApiParam({ name: 'id', description: 'Webhook ID' })
@@ -80,7 +80,7 @@ export class WebhookController {
   }
 
   @Delete(':id')
-  @RequireRole(ApiKeyRole.OPERATOR)
+  @RequireRole(ApiKeyRole.USER)
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete a webhook' })
   @ApiParam({ name: 'sessionId', description: 'Session ID' })

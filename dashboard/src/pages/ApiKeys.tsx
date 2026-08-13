@@ -14,7 +14,7 @@ import { useApiKeysQuery, useCreateApiKeyMutation, useDeleteApiKeyMutation, useR
 import { PageHeader } from '../components/PageHeader';
 import './ApiKeys.css';
 
-const roleNames = ['admin', 'operator', 'viewer'] as const;
+const roleNames = ['admin', 'user'] as const;
 
 function useWindowSize() {
   const [width, setWidth] = useState(window.innerWidth);
@@ -37,7 +37,7 @@ export function ApiKeys() {
   const revokeMutation = useRevokeApiKeyMutation();
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState(false);
-  const [newKey, setNewKey] = useState({ name: '', role: 'operator' });
+  const [newKey, setNewKey] = useState({ name: '', role: 'user' });
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<{ type: 'delete' | 'revoke'; id: string; name: string } | null>(
@@ -58,7 +58,7 @@ export function ApiKeys() {
     try {
       const created = await createMutation.mutateAsync({ name: newKey.name, role: newKey.role });
       setCreatedKey(created.apiKey || null);
-      setNewKey({ name: '', role: 'operator' });
+      setNewKey({ name: '', role: 'user' });
     } catch (err) {
       console.error('Failed to create:', err);
     }
