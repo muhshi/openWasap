@@ -15,6 +15,9 @@ export class ImportedContact {
   @Column({ type: 'varchar', length: 50 })
   phone: string;
 
+  @Column({ type: 'boolean', default: false })
+  isShared: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -31,6 +31,7 @@ export interface ImportedContact {
   id: string;
   name: string;
   phone: string;
+  isShared?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -40,6 +41,7 @@ export interface ContactGroup {
   name: string;
   description?: string;
   memberCount: number;
+  isShared?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -245,10 +247,10 @@ export const sessionApi = {
 
 export const importedContactApi = {
   list: () => request<ImportedContact[]>('/contacts/imported'),
-  create: (name: string, phone: string) =>
+  create: (name: string, phone: string, isShared: boolean = false) =>
     request<ImportedContact>('/contacts/imported', {
       method: 'POST',
-      body: JSON.stringify({ name, phone }),
+      body: JSON.stringify({ name, phone, isShared }),
     }),
   delete: (id: string) => request<void>(`/contacts/imported/${id}`, { method: 'DELETE' }),
   deleteAll: () => request<void>('/contacts/imported', { method: 'DELETE' }),
@@ -257,15 +259,15 @@ export const importedContactApi = {
 export const contactGroupApi = {
   list: () => request<ContactGroup[]>('/contact-groups'),
   get: (id: string) => request<ContactGroupDetail>(`/contact-groups/${id}`),
-  create: (name: string, description?: string, contactIds?: string[]) =>
+  create: (name: string, description?: string, contactIds?: string[], isShared: boolean = false) =>
     request<ContactGroupDetail>('/contact-groups', {
       method: 'POST',
-      body: JSON.stringify({ name, description, contactIds }),
+      body: JSON.stringify({ name, description, contactIds, isShared }),
     }),
-  bpsImport: (groupName: string, contacts: any[]) =>
+  bpsImport: (groupName: string, contacts: any[], isShared: boolean = false) =>
     request<{ success: boolean; message: string; data: any }>('/contact-groups/bps-import', {
       method: 'POST',
-      body: JSON.stringify({ groupName, contacts }),
+      body: JSON.stringify({ groupName, contacts, isShared }),
     }),
   update: (id: string, name: string, description?: string) =>
     request<ContactGroup>(`/contact-groups/${id}`, {

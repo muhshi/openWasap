@@ -20,10 +20,10 @@ export class ImportedContactController {
   @ApiOperation({ summary: 'Create or update an imported contact' })
   @ApiResponse({ status: 201, description: 'Contact created/updated' })
   async create(
-    @Body() body: { name: string; phone: string },
+    @Body() body: { name: string; phone: string; isShared?: boolean },
     @CurrentApiKey() apiKey: ApiKey,
   ) {
-    return this.contactService.create(body.name, body.phone, apiKey);
+    return this.contactService.create(body.name, body.phone, apiKey, body.isShared);
   }
 
   @Delete(':id')

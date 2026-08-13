@@ -16,11 +16,13 @@ export interface ContactWithMetadata {
 export interface BpsImportPayload {
   groupName: string;
   contacts: ContactWithMetadata[];
+  isShared?: boolean;
 }
 
 export interface BulkAddPayload {
   groupId: string;
   contacts: ContactWithMetadata[];
+  isShared?: boolean;
 }
 export interface ContactGroupWithCount extends ContactGroup {
   memberCount: number;
@@ -51,9 +53,12 @@ export class ContactGroupService {
 
   // ── List all groups with member count ──
   async findAll(apiKey?: ApiKey): Promise<ContactGroupWithCount[]> {
-    const where: any = {};
+    let where: any = {};
     if (apiKey && apiKey.role !== ApiKeyRole.ADMIN) {
-      where.ownerApiKeyId = apiKey.id;
+      where = [
+        { ownerApiKeyId: apiKey.id },
+        { isShared: true }
+      ];
     }
     const groups = await this.groupRepository.find({ where, order: { name: 'ASC' } });
 
@@ -73,7 +78,7 @@ export class ContactGroupService {
   async findOne(id: string, apiKey?: ApiKey): Promise<ContactGroupDetail> {
     const group = await this.groupRepository.findOne({ where: { id } });
     if (!group) throw new NotFoundException(`Contact group ${id} not found`);
-    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id) {
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id && !group.isShared) {
       throw new UnauthorizedException('You do not have access to this contact group');
     }
 
@@ -96,11 +101,12 @@ export class ContactGroupService {
   }
 
   // ── Create a new group ──
-  async create(name: string, description?: string, apiKey?: ApiKey): Promise<ContactGroup> {
+  async create(name: string, description?: string, apiKey?: ApiKey, isShared: boolean = false): Promise<ContactGroup> {
     const group = this.groupRepository.create({
       name,
       description,
       ownerApiKeyId: apiKey ? apiKey.id : null,
+      isShared,
     });
     return this.groupRepository.save(group);
   }
@@ -184,7 +190,7 @@ export class ContactGroupService {
   async getMemberPhones(groupId: string, memberIds?: string[], apiKey?: ApiKey): Promise<Array<{ id: string; name: string; phone: string }>> {
     const group = await this.groupRepository.findOne({ where: { id: groupId } });
     if (!group) throw new NotFoundException(`Contact group ${groupId} not found`);
-    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id) {
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id && !group.isShared) {
       throw new UnauthorizedException('You do not have access to this contact group');
     }
 
@@ -208,12 +214,14 @@ export class ContactGroupService {
       name: payload.groupName,
       description: 'Diimpor otomatis dari Excel BPS',
       ownerApiKeyId,
+      isShared: payload.isShared ?? false,
     });
     const savedGroup = await this.groupRepository.save(newGroup);
 
     await this.bulkAddFromExcel({
       groupId: savedGroup.id,
-      contacts: payload.contacts
+      contacts: payload.contacts,
+      isShared: payload.isShared ?? false,
     }, ownerApiKeyId);
 
     return savedGroup;
@@ -246,6 +254,7 @@ export class ContactGroupService {
           name: rawContact.name,
           phone: rawContact.phoneNumber, // ImportedContact entity uses 'phone', not 'phoneNumber'
           ownerApiKeyId,
+          isShared: payload.isShared ?? false,
         });
         existingPhonesMap.set(rawContact.phoneNumber, contactId);
       }

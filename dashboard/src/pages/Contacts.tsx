@@ -16,6 +16,8 @@ import {
   UserPlus,
   ChevronRight,
   ArrowLeft,
+  Globe,
+  Lock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { importedContactApi, contactGroupApi, messageApi } from '../services/api';
@@ -68,6 +70,7 @@ export function Contacts() {
   const [isAddContactOpen, setIsAddContactOpen] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
+  const [isNewContactShared, setIsNewContactShared] = useState(false);
 
   // ── Groups State ────────────────────────────────────────────────────────────
 
@@ -81,6 +84,8 @@ export function Contacts() {
   const [isCreateGroupOpen, setIsCreateGroupOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
+  const [isNewGroupShared, setIsNewGroupShared] = useState(false);
+  const [isBpsShared, setIsBpsShared] = useState(false);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
 
   // Edit Group modal
@@ -317,7 +322,7 @@ export function Contacts() {
 
         for (const [groupName, contactsPayload] of Object.entries(groupsMap)) {
           try {
-            await contactGroupApi.bpsImport(groupName, contactsPayload);
+            await contactGroupApi.bpsImport(groupName, contactsPayload, isBpsShared);
             successGroups++;
           } catch (err) {
             console.error(`Gagal import grup ${groupName}:`, err);
@@ -429,7 +434,7 @@ export function Contacts() {
     const phone = cleanPhoneNumber(newContactPhone);
     if (!phone) { toast.error('Format nomor HP tidak valid.'); return; }
     try {
-      const created = await importedContactApi.create(newContactName.trim(), phone);
+      const created = await importedContactApi.create(newContactName.trim(), phone, isNewContactShared);
       setImportedContacts(prev => {
         const filtered = prev.filter(c => c.phone !== phone);
         return [...filtered, created];
@@ -449,7 +454,7 @@ export function Contacts() {
     setIsCreatingGroup(true);
     try {
       const contactIdsToPass = selectedContactIds.length > 0 ? selectedContactIds : undefined;
-      const group = await contactGroupApi.create(newGroupName.trim(), newGroupDesc.trim() || undefined, contactIdsToPass);
+      const group = await contactGroupApi.create(newGroupName.trim(), newGroupDesc.trim() || undefined, contactIdsToPass, isNewGroupShared);
       setGroups(prev => [...prev, { ...group, memberCount: group.members?.length || 0 }]);
       toast.success(`Group "${group.name}" berhasil dibuat${contactIdsToPass ? ` dengan ${contactIdsToPass.length} kontak` : ''}.`);
       setNewGroupName(''); setNewGroupDesc(''); setIsCreateGroupOpen(false);
@@ -856,7 +861,20 @@ export function Contacts() {
                                   onChange={() => toggleSelectContact(c.id)}
                                 />
                               </td>
-                              <td className="contact-name"><span>{c.name}</span></td>
+                              <td className="contact-name">
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  {c.name}
+                                  {c.isShared ? (
+                                    <span title="Kontak Publik (Shared)" style={{ display: 'flex' }}>
+                                      <Globe size={12} style={{ color: '#0ea5e9' }} />
+                                    </span>
+                                  ) : (
+                                    <span title="Kontak Pribadi (Private)" style={{ display: 'flex' }}>
+                                      <Lock size={12} style={{ color: '#94a3b8' }} />
+                                    </span>
+                                  )}
+                                </span>
+                              </td>
                               <td className="contact-phone mono">+{c.phone}</td>
                               <td style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
                                 <button
@@ -939,6 +957,14 @@ export function Contacts() {
                       accept=".xlsx,.xls"
                       style={{ display: 'none' }}
                     />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', color: '#64748b', backgroundColor: '#f1f5f9', padding: '0 0.75rem', borderRadius: '0.375rem', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={isBpsShared}
+                        onChange={(e) => setIsBpsShared(e.target.checked)}
+                      />
+                      Bagikan (Shared)
+                    </label>
                     <button
                       className="btn-submit"
                       style={{ backgroundColor: '#10b981' }} // emerald color for excel
@@ -986,6 +1012,15 @@ export function Contacts() {
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                             <FolderOpen size={18} style={{ color: 'var(--primary-color,#2563eb)', flexShrink: 0 }} />
                             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary,#1e293b)' }}>{group.name}</h3>
+                            {group.isShared ? (
+                              <div title="Grup ini dibagikan ke semua pengguna" style={{ background: '#e0f2fe', color: '#0284c7', padding: '0.15rem 0.4rem', borderRadius: 12, fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                                <Globe size={12} /> Shared
+                              </div>
+                            ) : (
+                              <div title="Grup ini hanya bisa dilihat oleh Anda" style={{ background: '#f1f5f9', color: '#64748b', padding: '0.15rem 0.4rem', borderRadius: 12, fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                                <Lock size={12} /> Private
+                              </div>
+                            )}
                           </div>
                           <p style={{ margin: '0.25rem 0 0.5rem 1.625rem', fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)', lineHeight: 1.4, minHeight: '1.2em' }}>
                             {group.description || '\u00A0'}
@@ -1232,6 +1267,12 @@ export function Contacts() {
                 <label htmlFor="contact-phone">Nomor HP / WhatsApp</label>
                 <input id="contact-phone" type="text" required value={newContactPhone} onChange={e => setNewContactPhone(e.target.value)} placeholder="Contoh: 081234567890 atau 6281234567890" />
               </div>
+              <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem' }}>
+                <input id="contact-shared" type="checkbox" checked={isNewContactShared} onChange={e => setIsNewContactShared(e.target.checked)} />
+                <label htmlFor="contact-shared" style={{ margin: 0, fontWeight: 'normal', cursor: 'pointer' }}>
+                  Bagikan Kontak ke Semua Pengguna (Shared)
+                </label>
+              </div>
               <div className="modal-actions">
                 <button type="button" className="btn-cancel" onClick={() => setIsAddContactOpen(false)}>Batal</button>
                 <button type="submit" className="btn-submit" disabled={!newContactName.trim() || !newContactPhone.trim()}>
@@ -1270,6 +1311,12 @@ export function Contacts() {
                   💡 Setelah dibuat, tambahkan kontak ke group dari halaman detail group.
                 </p>
               )}
+              <div className="form-group" style={{ flexDirection: 'row', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                <input id="group-shared" type="checkbox" checked={isNewGroupShared} onChange={e => setIsNewGroupShared(e.target.checked)} />
+                <label htmlFor="group-shared" style={{ margin: 0, fontWeight: 'normal', cursor: 'pointer' }}>
+                  Bagikan Group ke Semua Pengguna (Shared)
+                </label>
+              </div>
               <div className="modal-actions">
                 <button type="button" className="btn-cancel" onClick={() => setIsCreateGroupOpen(false)}>Batal</button>
                 <button type="submit" className="btn-submit" disabled={isCreatingGroup || !newGroupName.trim()}>

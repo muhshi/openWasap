@@ -11,7 +11,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty, ApiSecurity } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsObject, Matches } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsObject, Matches, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContactGroupService } from './contact-group.service';
 import { SessionService } from '../session/session.service';
@@ -35,6 +35,11 @@ class CreateContactGroupDto {
   @IsArray()
   @IsOptional()
   contactIds?: string[];
+
+  @ApiProperty({ description: 'Tandai grup ini sebagai publik agar bisa diakses oleh user lain', required: false })
+  @IsBoolean()
+  @IsOptional()
+  isShared?: boolean;
 }
 
 class UpdateContactGroupDto {
@@ -105,6 +110,11 @@ export class BpsImportDto {
   @ValidateNested({ each: true })
   @Type(() => ContactWithMetadataDto)
   contacts: ContactWithMetadataDto[];
+
+  @ApiProperty({ description: 'Tandai grup ini sebagai publik agar bisa diakses oleh user lain', required: false })
+  @IsBoolean()
+  @IsOptional()
+  isShared?: boolean;
 }
 
 
@@ -134,7 +144,7 @@ export class ContactGroupController {
     @Body() dto: CreateContactGroupDto,
     @CurrentApiKey() apiKey: ApiKey,
   ) {
-    const group = await this.contactGroupService.create(dto.name, dto.description, apiKey);
+    const group = await this.contactGroupService.create(dto.name, dto.description, apiKey, dto.isShared);
 
     // Tambah anggota awal jika ada
     if (dto.contactIds && dto.contactIds.length > 0) {

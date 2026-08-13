@@ -12,14 +12,17 @@ export class ImportedContactService {
   ) {}
 
   async findAll(apiKey?: ApiKey): Promise<ImportedContact[]> {
-    const where: any = {};
+    let where: any = {};
     if (apiKey && apiKey.role !== ApiKeyRole.ADMIN) {
-      where.ownerApiKeyId = apiKey.id;
+      where = [
+        { ownerApiKeyId: apiKey.id },
+        { isShared: true }
+      ];
     }
     return this.contactRepository.find({ where, order: { name: 'ASC' } });
   }
 
-  async create(name: string, phone: string, apiKey?: ApiKey): Promise<ImportedContact> {
+  async create(name: string, phone: string, apiKey?: ApiKey, isShared: boolean = false): Promise<ImportedContact> {
     const ownerApiKeyId = apiKey ? apiKey.id : null;
     const existing = await this.contactRepository.findOne({
       where: {
@@ -29,9 +32,10 @@ export class ImportedContactService {
     });
     if (existing) {
       existing.name = name;
+      existing.isShared = isShared;
       return this.contactRepository.save(existing);
     }
-    const contact = this.contactRepository.create({ name, phone, ownerApiKeyId });
+    const contact = this.contactRepository.create({ name, phone, ownerApiKeyId, isShared });
     return this.contactRepository.save(contact);
   }
 

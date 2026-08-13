@@ -14,6 +14,9 @@ export class ContactGroup {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  @Column({ type: 'boolean', default: false })
+  isShared: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 
