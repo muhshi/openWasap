@@ -58,6 +58,7 @@ export function Contacts() {
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [contactFilter, setContactFilter] = useState<'all' | 'private' | 'shared'>('all');
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]); // used for adding to groups
 
   // Pagination
@@ -75,6 +76,7 @@ export function Contacts() {
   // ── Groups State ────────────────────────────────────────────────────────────
 
   const [groups, setGroups] = useState<ContactGroup[]>([]);
+  const [groupFilter, setGroupFilter] = useState<'all' | 'private' | 'shared'>('all');
   const [isLoadingGroups, setIsLoadingGroups] = useState(false);
   const [groupView, setGroupView] = useState<GroupView>('list');
   const [activeGroup, setActiveGroup] = useState<ContactGroupDetail | null>(null);
@@ -381,10 +383,14 @@ export function Contacts() {
     );
   };
 
-  const filteredContacts = importedContacts.filter(c =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.phone.includes(searchQuery)
-  );
+  const filteredContacts = importedContacts.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          c.phone.includes(searchQuery);
+    const matchesFilter = contactFilter === 'all' || 
+                          (contactFilter === 'private' && !c.isShared) || 
+                          (contactFilter === 'shared' && c.isShared);
+    return matchesSearch && matchesFilter;
+  });
   const totalPages = Math.ceil(filteredContacts.length / pageSize);
   const paginatedContacts = filteredContacts.slice(
     (currentPage - 1) * pageSize,
@@ -398,6 +404,13 @@ export function Contacts() {
         currentGroupPage * groupPageSize
       )
     : [];
+
+  const filteredGroups = groups.filter(g => {
+    return groupFilter === 'all' ||
+           (groupFilter === 'private' && !g.isShared) ||
+           (groupFilter === 'shared' && g.isShared);
+  });
+
   const isAllSelected =
     paginatedContacts.length > 0 &&
     paginatedContacts.every(c => selectedContactIds.includes(c.id));
@@ -808,7 +821,24 @@ export function Contacts() {
                   Daftar Kontak
                   <span className="count-badge">({filteredContacts.length})</span>
                 </h2>
-                <div className="filters">
+                <div className="filters" style={{ display: 'flex', gap: '0.5rem' }}>
+                  <select
+                    value={contactFilter}
+                    onChange={(e) => setContactFilter(e.target.value as any)}
+                    style={{
+                      padding: '0.4rem 0.5rem',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color,#cbd5e1)',
+                      background: 'var(--bg-card,#fff)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.85rem',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="all">Semua Akses</option>
+                    <option value="private">🔒 Private</option>
+                    <option value="shared">🌐 Shared</option>
+                  </select>
                   <div className="search-box">
                     <Search size={16} />
                     <input
@@ -973,6 +1003,23 @@ export function Contacts() {
                     >
                       <FileSpreadsheet size={16} /> Import Excel BPS
                     </button>
+                    <select
+                      value={groupFilter}
+                      onChange={(e) => setGroupFilter(e.target.value as any)}
+                      style={{
+                        padding: '0.4rem 0.5rem',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-color,#cbd5e1)',
+                        background: 'var(--bg-card,#fff)',
+                        color: 'var(--text-primary)',
+                        fontSize: '0.85rem',
+                        outline: 'none'
+                      }}
+                    >
+                      <option value="all">Semua Akses</option>
+                      <option value="private">🔒 Private</option>
+                      <option value="shared">🌐 Shared</option>
+                    </select>
                     <button
                       className="btn-submit"
                       onClick={() => setIsCreateGroupOpen(true)}
@@ -988,19 +1035,14 @@ export function Contacts() {
                   <Loader2 className="animate-spin" size={24} />
                   <span>Memuat groups...</span>
                 </div>
-              ) : groups.length === 0 ? (
+              ) : filteredGroups.length === 0 ? (
                 <div className="table-empty" style={{ padding: '6rem 0' }}>
                   <Users size={48} />
-                  <p>Belum ada group. Buat group baru dan tambahkan kontak untuk mulai blast WA personal.</p>
-                  {canWrite && (
-                    <button className="btn-submit" onClick={() => setIsCreateGroupOpen(true)}>
-                      <Plus size={16} /> Buat Group Pertama
-                    </button>
-                  )}
+                  <p>Tidak ada group yang cocok dengan filter atau belum ada group.</p>
                 </div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
-                  {groups.map(group => (
+                  {filteredGroups.map(group => (
                     <div
                       key={group.id}
                       className="card"
