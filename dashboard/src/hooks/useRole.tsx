@@ -3,7 +3,12 @@ import type { UserRole, RoleContextType } from '../types/role';
 
 export type { UserRole, RoleContextType } from '../types/role';
 
-const RoleContext = createContext<RoleContextType | undefined>(undefined);
+export interface ExtendedRoleContextType extends RoleContextType {
+  apiKeyId: string | null;
+  setApiKeyId: (id: string | null) => void;
+}
+
+const RoleContext = createContext<ExtendedRoleContextType | undefined>(undefined);
 
 export function RoleProvider({ children }: { children: ReactNode }) {
   const [role, setRoleState] = useState<UserRole | null>(() => {
@@ -20,9 +25,24 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value: RoleContextType = {
+  const [apiKeyId, setApiKeyIdState] = useState<string | null>(() => {
+    return localStorage.getItem('openwa_api_key_id');
+  });
+
+  const setApiKeyId = useCallback((id: string | null) => {
+    setApiKeyIdState(id);
+    if (id) {
+      localStorage.setItem('openwa_api_key_id', id);
+    } else {
+      localStorage.removeItem('openwa_api_key_id');
+    }
+  }, []);
+
+  const value: ExtendedRoleContextType = {
     role,
     setRole,
+    apiKeyId,
+    setApiKeyId,
     isAdmin: role === 'admin',
     isOperator: role === 'operator' || role === 'user',
     isViewer: role === 'viewer' || role === 'readonly',
@@ -32,7 +52,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>;
 }
 
-export function useRole(): RoleContextType {
+export function useRole(): ExtendedRoleContextType {
   const context = useContext(RoleContext);
   if (context === undefined) {
     throw new Error('useRole must be used within a RoleProvider');

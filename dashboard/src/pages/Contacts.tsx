@@ -39,7 +39,7 @@ type GroupView = 'list' | 'detail';
 export function Contacts() {
   const { t } = useTranslation();
   useDocumentTitle(t('contacts.title'));
-  const { canWrite } = useRole();
+  const { canWrite, apiKeyId, isAdmin } = useRole();
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bpsFileInputRef = useRef<HTMLInputElement>(null);
@@ -59,7 +59,8 @@ export function Contacts() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [contactFilter, setContactFilter] = useState<'all' | 'private' | 'shared'>('all');
-  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]); // used for adding to groups
+  const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]); // used for bulk actions
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]); // used for bulk actions
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -123,6 +124,96 @@ export function Contacts() {
   const [isDeletingBulk, setIsDeletingBulk] = useState(false);
 
   // ── Load Data ───────────────────────────────────────────────────────────────
+
+
+  // ── Bulk Actions ──
+  const handleBulkUpdateContacts = async (isShared: boolean) => {
+    if (!selectedContactIds.length) return;
+    try {
+      setIsLoadingContacts(true);
+      await importedContactApi.bulkUpdatePrivacy(selectedContactIds, isShared);
+      toast.success('Privasi kontak berhasil diubah');
+      setSelectedContactIds([]);
+      loadImportedContacts();
+    } catch (e: any) {
+      toast.error('Gagal mengubah privasi: ' + e.message);
+      setIsLoadingContacts(false);
+    }
+  };
+
+  const handleBulkDeleteContacts = async () => {
+    if (!selectedContactIds.length) return;
+    if (!window.confirm(`Yakin hapus ${selectedContactIds.length} kontak?`)) return;
+    try {
+      setIsLoadingContacts(true);
+      await importedContactApi.bulkDelete(selectedContactIds);
+      toast.success('Kontak berhasil dihapus');
+      setSelectedContactIds([]);
+      loadImportedContacts();
+    } catch (e: any) {
+      toast.error('Gagal menghapus kontak: ' + e.message);
+      setIsLoadingContacts(false);
+    }
+  };
+
+  const handleBulkUpdateGroups = async (isShared: boolean) => {
+    if (!selectedGroupIds.length) return;
+    try {
+      setIsLoadingGroups(true);
+      await contactGroupApi.bulkUpdatePrivacy(selectedGroupIds, isShared);
+      toast.success('Privasi grup berhasil diubah');
+      setSelectedGroupIds([]);
+      loadGroups();
+    } catch (e: any) {
+      toast.error('Gagal mengubah privasi: ' + e.message);
+      setIsLoadingGroups(false);
+    }
+  };
+
+  const handleBulkDeleteGroups = async () => {
+    if (!selectedGroupIds.length) return;
+    if (!window.confirm(`Yakin hapus ${selectedGroupIds.length} grup?`)) return;
+    try {
+      setIsLoadingGroups(true);
+      await contactGroupApi.bulkDelete(selectedGroupIds);
+      toast.success('Grup berhasil dihapus');
+      setSelectedGroupIds([]);
+      loadGroups();
+    } catch (e: any) {
+      toast.error('Gagal menghapus grup: ' + e.message);
+      setIsLoadingGroups(false);
+    }
+  };
+
+  const handleToggleContactPrivacy = async (c: ImportedContact) => {
+    if (!isAdmin && c.ownerApiKeyId !== apiKeyId) {
+      toast.error('Anda tidak memiliki akses untuk mengubah kontak ini');
+      return;
+    }
+    try {
+      setIsLoadingContacts(true);
+      await importedContactApi.bulkUpdatePrivacy([c.id], !c.isShared);
+      loadImportedContacts();
+    } catch (e: any) {
+      toast.error('Gagal mengubah privasi: ' + e.message);
+      setIsLoadingContacts(false);
+    }
+  };
+
+  const handleToggleGroupPrivacy = async (g: ContactGroup) => {
+    if (!isAdmin && g.ownerApiKeyId !== apiKeyId) {
+      toast.error('Anda tidak memiliki akses untuk mengubah grup ini');
+      return;
+    }
+    try {
+      setIsLoadingGroups(true);
+      await contactGroupApi.update(g.id, g.name, g.description, !g.isShared);
+      loadGroups();
+    } catch (e: any) {
+      toast.error('Gagal mengubah privasi: ' + e.message);
+      setIsLoadingGroups(false);
+    }
+  };
 
   const loadImportedContacts = useCallback(async () => {
     setIsLoadingContacts(true);
@@ -1052,6 +1143,7 @@ export function Contacts() {
                       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                            <input type="checkbox" checked={selectedGroupIds.includes(group.id)} onChange={(e) => { e.stopPropagation(); if (e.target.checked) setSelectedGroupIds([...selectedGroupIds, group.id]); else setSelectedGroupIds(selectedGroupIds.filter(id => id !== group.id)); }} onClick={(e) => e.stopPropagation()} style={{ marginRight: 8 }} />
                             <FolderOpen size={18} style={{ color: 'var(--primary-color,#2563eb)', flexShrink: 0 }} />
                             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary,#1e293b)' }}>{group.name}</h3>
                             {group.isShared ? (

@@ -52,6 +52,11 @@ class UpdateContactGroupDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @ApiProperty({ description: 'Status privasi (opsional)', required: false })
+  @IsBoolean()
+  @IsOptional()
+  isShared?: boolean;
 }
 
 class AddMembersDto {
@@ -167,7 +172,7 @@ export class ContactGroupController {
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Update nama/deskripsi contact group' })
+  @ApiOperation({ summary: 'Update nama/deskripsi/privasi contact group' })
   @ApiParam({ name: 'id', description: 'Group ID' })
   @ApiBody({ type: UpdateContactGroupDto })
   @ApiResponse({ status: 200, description: 'Group berhasil diupdate' })
@@ -177,7 +182,36 @@ export class ContactGroupController {
     @Body() dto: UpdateContactGroupDto,
     @CurrentApiKey() apiKey: ApiKey,
   ) {
-    return this.contactGroupService.update(id, dto.name, dto.description, apiKey);
+    return this.contactGroupService.update(id, dto.name, dto.description, dto.isShared, apiKey);
+  }
+
+  @Put('bulk/update-privacy')
+  @ApiOperation({ summary: 'Update privasi untuk beberapa contact group sekaligus' })
+  @ApiBody({ schema: { properties: { ids: { type: 'array', items: { type: 'string' } }, isShared: { type: 'boolean' } } } })
+  @ApiResponse({ status: 200, description: 'Groups berhasil diupdate' })
+  async bulkUpdate(
+    @Body('ids') ids: string[],
+    @Body('isShared') isShared: boolean,
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    if (!ids || ids.length === 0) {
+      throw new BadRequestException('ids must not be empty');
+    }
+    return this.contactGroupService.bulkUpdate(ids, isShared, apiKey);
+  }
+
+  @Delete('bulk/delete')
+  @ApiOperation({ summary: 'Hapus beberapa contact group sekaligus' })
+  @ApiBody({ schema: { properties: { ids: { type: 'array', items: { type: 'string' } } } } })
+  @ApiResponse({ status: 200, description: 'Groups berhasil dihapus' })
+  async bulkDelete(
+    @Body('ids') ids: string[],
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    if (!ids || ids.length === 0) {
+      throw new BadRequestException('ids must not be empty');
+    }
+    return this.contactGroupService.bulkDelete(ids, apiKey);
   }
 
   @Delete(':id')

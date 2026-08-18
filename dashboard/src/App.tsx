@@ -34,7 +34,7 @@ function AppContent() {
   const savedKey = sessionStorage.getItem('openwa_api_key');
   const [isAuthenticated, setIsAuthenticated] = useState(!!savedKey);
   const [, setApiKey] = useState(savedKey || '');
-  const { setRole, role } = useRole();
+  const { setRole, role, setApiKeyId } = useRole();
 
   const handleLogin = async (key: string) => {
     setApiKey(key);
@@ -49,6 +49,7 @@ function AppContent() {
       if (response.ok) {
         const data = await response.json();
         setRole(data.role as UserRole);
+        if (data.id) setApiKeyId(data.id);
       }
     } catch {
       // Default to viewer if we can't fetch role
@@ -62,6 +63,7 @@ function AppContent() {
     setApiKey('');
     setIsAuthenticated(false);
     setRole(null);
+    setApiKeyId(null);
     sessionStorage.removeItem('openwa_api_key');
   };
 
@@ -77,6 +79,7 @@ function AppContent() {
       .then(data => {
         if (data.valid && data.role) {
           setRole(data.role as UserRole);
+          if (data.id) setApiKeyId(data.id);
         }
       })
       .catch(() => {

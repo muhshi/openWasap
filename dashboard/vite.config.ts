@@ -10,12 +10,19 @@ export default defineConfig({
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   server: {
-    port: 2886,
+    port: 8080,
+    host: '127.0.0.1',
     proxy: {
       '/api': {
         target: 'http://localhost:2785',
         changeOrigin: true,
         secure: false,
+      },
+      '/auth/sipetra': {
+        target: 'http://localhost:2785',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/auth\/sipetra/, '/api/auth/sipetra'),
       },
     },
   },

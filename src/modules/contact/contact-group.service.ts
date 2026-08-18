@@ -111,8 +111,8 @@ export class ContactGroupService {
     return this.groupRepository.save(group);
   }
 
-  // ── Update group name / description ──
-  async update(id: string, name?: string, description?: string, apiKey?: ApiKey): Promise<ContactGroup> {
+  // ── Update group name / description / privacy ──
+  async update(id: string, name?: string, description?: string, isShared?: boolean, apiKey?: ApiKey): Promise<ContactGroup> {
     const group = await this.groupRepository.findOne({ where: { id } });
     if (!group) throw new NotFoundException(`Contact group ${id} not found`);
     if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && group.ownerApiKeyId !== apiKey.id) {
@@ -121,6 +121,7 @@ export class ContactGroupService {
 
     if (name !== undefined) group.name = name;
     if (description !== undefined) group.description = description;
+    if (isShared !== undefined) group.isShared = isShared;
 
     return this.groupRepository.save(group);
   }
@@ -133,6 +134,36 @@ export class ContactGroupService {
       throw new UnauthorizedException('You do not have access to this contact group');
     }
     await this.groupRepository.remove(group);
+  }
+
+  // ── Bulk update groups (privacy) ──
+  async bulkUpdate(ids: string[], isShared: boolean, apiKey?: ApiKey): Promise<{ updated: number }> {
+    const qb = this.groupRepository.createQueryBuilder('group')
+      .update(ContactGroup)
+      .set({ isShared })
+      .where('id IN (:...ids)', { ids });
+    
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN) {
+      qb.andWhere('ownerApiKeyId = :ownerId', { ownerId: apiKey.id });
+    }
+
+    const result = await qb.execute();
+    return { updated: result.affected ?? 0 };
+  }
+
+  // ── Bulk delete groups ──
+  async bulkDelete(ids: string[], apiKey?: ApiKey): Promise<{ deleted: number }> {
+    const qb = this.groupRepository.createQueryBuilder('group')
+      .delete()
+      .from(ContactGroup)
+      .where('id IN (:...ids)', { ids });
+    
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN) {
+      qb.andWhere('ownerApiKeyId = :ownerId', { ownerId: apiKey.id });
+    }
+
+    const result = await qb.execute();
+    return { deleted: result.affected ?? 0 };
   }
 
   // ── Add contacts to a group ──

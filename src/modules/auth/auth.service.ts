@@ -5,6 +5,7 @@ import { createHash, randomBytes } from 'crypto';
 import { existsSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { ApiKey, ApiKeyRole } from './entities/api-key.entity';
+import { User } from './entities/user.entity';
 import { CreateApiKeyDto, UpdateApiKeyDto } from './dto';
 import { createLogger } from '../../common/services/logger.service';
 
@@ -17,6 +18,8 @@ export class AuthService implements OnModuleInit {
   constructor(
     @InjectRepository(ApiKey, 'main')
     private readonly apiKeyRepository: Repository<ApiKey>,
+    @InjectRepository(User, 'main')
+    private readonly userRepository: Repository<User>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -283,5 +286,47 @@ export class AuthService implements OnModuleInit {
     };
 
     return roleHierarchy[apiKey.role] >= roleHierarchy[requiredRole];
+  }
+
+  async syncSsoUser(profile: any, tokens: any): Promise<ApiKey> {
+    let user = await this.userRepository.findOne({ where: { sipetraId: profile.id } });
+    if (!user) {
+      user = this.userRepository.create({
+        sipetraId: profile.id,
+        name: profile.name,
+        email: profile.email,
+        nip: profile.nip,
+        jabatan: profile.jabatan,
+        sipetraToken: tokens.access_token,
+        sipetraRefreshToken: tokens.refresh_token,
+      });
+      user = await this.userRepository.save(user);
+    } else {
+      user.name = profile.name;
+      user.email = profile.email;
+      user.nip = profile.nip;
+      user.jabatan = profile.jabatan;
+      user.sipetraToken = tokens.access_token;
+      user.sipetraRefreshToken = tokens.refresh_token;
+      user = await this.userRepository.save(user);
+    }
+
+    let apiKey = await this.apiKeyRepository.findOne({ where: { userId: user.id } });
+    if (!apiKey) {
+      const rawKey = 'owa_k1_' + randomBytes(32).toString('hex');
+      const keyHash = this.hashKey(rawKey);
+      const keyPrefix = rawKey.substring(0, 12);
+
+      apiKey = this.apiKeyRepository.create({
+        name: 'SSO Key - ' + user.name,
+        keyHash,
+        keyPrefix,
+        role: ApiKeyRole.USER,
+        userId: user.id,
+      });
+      await this.apiKeyRepository.save(apiKey);
+      (apiKey as any).rawKey = rawKey;
+    }
+    return apiKey;
   }
 }

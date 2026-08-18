@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff } from 'lucide-react';
 import { GithubIcon } from '../components/GithubIcon';
@@ -14,6 +14,49 @@ export function Login({ onLogin }: LoginProps) {
   const [showKey, setShowKey] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    // Check for sso_key or error in URL params
+    const params = new URLSearchParams(window.location.search);
+    const ssoKey = params.get('sso_key');
+    const urlError = params.get('error');
+    
+    if (urlError) {
+      setError(decodeURIComponent(urlError));
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (ssoKey) {
+      setApiKey(ssoKey);
+      handleSsoLogin(ssoKey);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  const handleSsoLogin = async (keyToUse: string) => {
+    setIsLoading(true);
+    setError('');
+    try {
+      const response = await fetch('/api/auth/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': keyToUse,
+        },
+      });
+
+      if (response.ok) {
+        onLogin(keyToUse);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.message || t('login.invalidKey'));
+      }
+    } catch {
+      setError(t('login.connectionError'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,6 +124,20 @@ export function Login({ onLogin }: LoginProps) {
             {isLoading ? t('login.connecting') : t('login.connect')}
           </button>
         </form>
+
+        <div className="sso-divider">
+          <div className="sso-divider-line"></div>
+          <span className="sso-divider-text">{t('login.or') || 'atau'}</span>
+          <div className="sso-divider-line"></div>
+        </div>
+
+        <a href="/auth/sipetra/redirect" className="sso-button">
+          <img src="/logo_bps.png" alt="Logo BPS" className="sso-logo" loading="lazy" />
+          <span>{t('login.ssoSipetra') || 'Masuk dengan SIPETRA SSO'}</span>
+          <svg className="sso-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </a>
 
         <p className="login-help">
           {t('login.help')}{' '}

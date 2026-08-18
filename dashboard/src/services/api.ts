@@ -254,6 +254,16 @@ export const importedContactApi = {
     }),
   delete: (id: string) => request<void>(`/contacts/imported/${id}`, { method: 'DELETE' }),
   deleteAll: () => request<void>('/contacts/imported', { method: 'DELETE' }),
+  bulkUpdatePrivacy: (ids: string[], isShared: boolean) =>
+    request<{ updated: number }>('/contacts/imported/bulk/update-privacy', {
+      method: 'PUT',
+      body: JSON.stringify({ ids, isShared }),
+    }),
+  bulkDelete: (ids: string[]) =>
+    request<{ deleted: number }>('/contacts/imported/bulk/delete', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids }),
+    }),
 };
 
 export const contactGroupApi = {
@@ -269,12 +279,22 @@ export const contactGroupApi = {
       method: 'POST',
       body: JSON.stringify({ groupName, contacts, isShared }),
     }),
-  update: (id: string, name: string, description?: string) =>
+  update: (id: string, name: string, description?: string, isShared?: boolean) =>
     request<ContactGroup>(`/contact-groups/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ name, description }),
+      body: JSON.stringify({ name, description, isShared }),
     }),
   delete: (id: string) => request<void>(`/contact-groups/${id}`, { method: 'DELETE' }),
+  bulkUpdatePrivacy: (ids: string[], isShared: boolean) =>
+    request<{ updated: number }>('/contact-groups/bulk/update-privacy', {
+      method: 'PUT',
+      body: JSON.stringify({ ids, isShared }),
+    }),
+  bulkDelete: (ids: string[]) =>
+    request<{ deleted: number }>('/contact-groups/bulk/delete', {
+      method: 'DELETE',
+      body: JSON.stringify({ ids }),
+    }),
   addMembers: (id: string, contactIds: string[]) =>
     request<{ success: boolean; added: number; skipped: number }>(`/contact-groups/${id}/members`, {
       method: 'POST',

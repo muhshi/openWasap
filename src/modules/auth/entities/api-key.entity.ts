@@ -1,5 +1,6 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index, ManyToOne, JoinColumn } from 'typeorm';
 import { arrayColumnType, dateColumnType } from '../../../common/utils/column-types';
+import { User } from './user.entity';
 
 export enum ApiKeyRole {
   ADMIN = 'admin',
@@ -45,6 +46,13 @@ export class ApiKey {
 
   @Column({ type: 'int', default: 0 })
   usageCount: number;
+
+  @ManyToOne(() => User, user => user.apiKeys, { nullable: true, onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
+  user: User | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  userId: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

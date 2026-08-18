@@ -57,4 +57,32 @@ export class ImportedContactService {
     }
     await this.contactRepository.delete(where);
   }
+
+  async bulkUpdate(ids: string[], isShared: boolean, apiKey?: ApiKey): Promise<{ updated: number }> {
+    const qb = this.contactRepository.createQueryBuilder('contact')
+      .update(ImportedContact)
+      .set({ isShared })
+      .where('id IN (:...ids)', { ids });
+    
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN) {
+      qb.andWhere('ownerApiKeyId = :ownerId', { ownerId: apiKey.id });
+    }
+
+    const result = await qb.execute();
+    return { updated: result.affected ?? 0 };
+  }
+
+  async bulkDelete(ids: string[], apiKey?: ApiKey): Promise<{ deleted: number }> {
+    const qb = this.contactRepository.createQueryBuilder('contact')
+      .delete()
+      .from(ImportedContact)
+      .where('id IN (:...ids)', { ids });
+    
+    if (apiKey && apiKey.role !== ApiKeyRole.ADMIN) {
+      qb.andWhere('ownerApiKeyId = :ownerId', { ownerId: apiKey.id });
+    }
+
+    const result = await qb.execute();
+    return { deleted: result.affected ?? 0 };
+  }
 }

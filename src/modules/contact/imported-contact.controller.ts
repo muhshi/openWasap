@@ -44,4 +44,31 @@ export class ImportedContactController {
   async deleteAll(@CurrentApiKey() apiKey: ApiKey) {
     await this.contactService.deleteAll(apiKey);
   }
+
+  @Put('bulk/update-privacy')
+  @ApiOperation({ summary: 'Update privasi untuk beberapa contact sekaligus' })
+  @ApiResponse({ status: 200, description: 'Contacts berhasil diupdate' })
+  async bulkUpdate(
+    @Body('ids') ids: string[],
+    @Body('isShared') isShared: boolean,
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    if (!ids || ids.length === 0) {
+      return { updated: 0 };
+    }
+    return this.contactService.bulkUpdate(ids, isShared, apiKey);
+  }
+
+  @Delete('bulk/delete')
+  @ApiOperation({ summary: 'Hapus beberapa contact sekaligus' })
+  @ApiResponse({ status: 200, description: 'Contacts berhasil dihapus' })
+  async bulkDelete(
+    @Body('ids') ids: string[],
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    if (!ids || ids.length === 0) {
+      return { deleted: 0 };
+    }
+    return this.contactService.bulkDelete(ids, apiKey);
+  }
 }
