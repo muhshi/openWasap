@@ -213,6 +213,9 @@ export function Contacts() {
     }
   };
 
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
+
   const loadImportedContacts = useCallback(async () => {
     setIsLoadingContacts(true);
     try {
@@ -220,11 +223,11 @@ export function Contacts() {
       setImportedContacts(data);
     } catch (err) {
       console.error('Failed to load imported contacts:', err);
-      toast.error('Gagal mengambil data kontak dari database.');
+      toastRef.current.error('Gagal mengambil data kontak dari database.');
     } finally {
       setIsLoadingContacts(false);
     }
-  }, [toast]);
+  }, []);
 
   const loadGroups = useCallback(async () => {
     setIsLoadingGroups(true);
@@ -233,11 +236,11 @@ export function Contacts() {
       setGroups(data);
     } catch (err) {
       console.error('Failed to load groups:', err);
-      toast.error('Gagal mengambil data group.');
+      toastRef.current.error('Gagal mengambil data group.');
     } finally {
       setIsLoadingGroups(false);
     }
-  }, [toast]);
+  }, []);
 
   useEffect(() => {
     void loadImportedContacts();

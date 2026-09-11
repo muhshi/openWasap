@@ -47,7 +47,13 @@ export function ToastProvider({ children }: ToastProviderProps) {
     (toast: Omit<Toast, 'id'>) => {
       const id = crypto.randomUUID();
       const newToast = { ...toast, id };
-      setToasts(prev => [...prev, newToast]);
+      setToasts(prev => {
+        // Prevent duplicate toast spam if same title already exists
+        if (prev.some(t => t.title === toast.title)) {
+          return prev;
+        }
+        return [...prev, newToast];
+      });
 
       // Auto-remove after duration
       const duration = toast.duration ?? 4000;

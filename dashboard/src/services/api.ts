@@ -209,6 +209,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   const response = await fetch(url, { ...options, headers });
 
+  if (response.status === 401) {
+    sessionStorage.removeItem('openwa_api_key');
+    if (!window.location.pathname.startsWith('/login')) {
+      window.location.href = '/login?error=' + encodeURIComponent('Sesi login telah berakhir. Silakan login kembali.');
+    }
+    throw new Error('Sesi telah berakhir (401 Unauthorized)');
+  }
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: response.statusText }));
     throw new Error(error.message || `HTTP ${response.status}`);

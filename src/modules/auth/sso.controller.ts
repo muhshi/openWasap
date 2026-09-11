@@ -1,5 +1,5 @@
-import { Controller, Get, Query, Res } from '@nestjs/common';
-import type { Response } from 'express';
+import { Controller, Get, Query, Req, Res } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/auth.decorators';
 import { createLogger } from '../../common/services/logger.service';
@@ -10,19 +10,47 @@ export class SsoController {
 
   constructor(private readonly authService: AuthService) {}
 
+  private getDashboardUrl(req: Request): string {
+    if (process.env.DASHBOARD_URL) {
+      return process.env.DASHBOARD_URL.replace(/\/+$/, '');
+    }
+    const referer = req.headers.referer;
+    if (referer) {
+      try {
+        const url = new URL(referer);
+        return `${url.protocol}//${url.host}`;
+      } catch {
+        // ignore invalid referer
+      }
+    }
+    const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+    const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || `localhost:${process.env.DASHBOARD_PORT || 2886}`;
+    return `${proto}://${host}`;
+  }
+
   @Public()
   @Get('redirect')
-  async redirect(@Res() res: Response) {
+  async redirect(@Req() req: Request, @Res() res: Response) {
+    const dashboardUrl = this.getDashboardUrl(req);
+    const baseUrl = process.env.SIPETRA_BASE_URL || 'https://bpsdemak.com';
     const clientId = process.env.SIPETRA_CLIENT_ID;
-    const redirectUri = process.env.SIPETRA_REDIRECT_URI;
-    const baseUrl = process.env.SIPETRA_BASE_URL;
+    const redirectUri = process.env.SIPETRA_REDIRECT_URI || `${dashboardUrl}/auth/sipetra/callback`;
 
-    if (!clientId || !redirectUri || !baseUrl) {
-      return res.status(500).send('SSO configuration is missing.');
+    const missingConfig: string[] = [];
+    if (!clientId) missingConfig.push('SIPETRA_CLIENT_ID');
+    if (!process.env.SIPETRA_CLIENT_SECRET) missingConfig.push('SIPETRA_CLIENT_SECRET');
+
+    if (missingConfig.length > 0) {
+      this.logger.error(`SSO configuration is missing: ${missingConfig.join(', ')}`);
+      return res.redirect(
+        `${dashboardUrl}/login?error=${encodeURIComponent(
+          `Konfigurasi SSO belum lengkap di file .env server: variabel [${missingConfig.join(', ')}] belum diisi.`,
+        )}`,
+      );
     }
 
     const queryParams = new URLSearchParams({
-      client_id: clientId,
+      client_id: clientId!,
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'identity_pegawai:read employee:read contact:read roles:read',
@@ -34,19 +62,30 @@ export class SsoController {
 
   @Public()
   @Get('callback')
-  async callback(@Query('code') code: string, @Query('error') error: string, @Res() res: Response) {
+  async callback(
+    @Query('code') code: string,
+    @Query('error') error: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const dashboardUrl = this.getDashboardUrl(req);
+
     if (error) {
-      return res.redirect('/login?error=' + encodeURIComponent(error));
+      return res.redirect(`${dashboardUrl}/login?error=` + encodeURIComponent(error));
     }
     if (!code) {
-      return res.redirect('/login?error=' + encodeURIComponent('No authorization code provided.'));
+      return res.redirect(`${dashboardUrl}/login?error=` + encodeURIComponent('No authorization code provided.'));
     }
 
+    const baseUrl = process.env.SIPETRA_BASE_URL || 'https://bpsdemak.com';
     const clientId = process.env.SIPETRA_CLIENT_ID;
     const clientSecret = process.env.SIPETRA_CLIENT_SECRET;
-    const redirectUri = process.env.SIPETRA_REDIRECT_URI;
-    const baseUrl = process.env.SIPETRA_BASE_URL;
-    const dashboardUrl = process.env.DASHBOARD_URL || `http://localhost:${process.env.DASHBOARD_PORT || 8080}`;
+    const redirectUri = process.env.SIPETRA_REDIRECT_URI || `${dashboardUrl}/auth/sipetra/callback`;
+
+    if (!clientId || !clientSecret) {
+      this.logger.error('SSO credentials missing in callback');
+      return res.redirect(`${dashboardUrl}/login?error=${encodeURIComponent('Konfigurasi kredensial SIPETRA SSO (SIPETRA_CLIENT_ID / SECRET) tidak lengkap di .env server.')}`);
+    }
 
     try {
       // Exchange code for token

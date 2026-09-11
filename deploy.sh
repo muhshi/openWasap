@@ -70,6 +70,17 @@ if [ ! -f ".env" ]; then
   exit 1
 fi
 
+# Cek konfigurasi SSO di .env
+if ! grep -qE '^SIPETRA_CLIENT_ID=[^[:space:]]+' .env 2>/dev/null || \
+   ! grep -qE '^SIPETRA_CLIENT_SECRET=[^[:space:]]+' .env 2>/dev/null; then
+  echo -e "${YELLOW}⚠️  PERHATIAN: Konfigurasi SSO SIPETRA belum lengkap di .env server.${NC}"
+  echo -e "   Jika ingin mengaktifkan SSO, pastikan variabel berikut diisi di .env:"
+  echo -e "   • SIPETRA_CLIENT_ID"
+  echo -e "   • SIPETRA_CLIENT_SECRET"
+  echo -e "   • SIPETRA_REDIRECT_URI"
+  echo -e "   • SIPETRA_BASE_URL (default: https://bpsdemak.com)"
+fi
+
 # ---- 2. Cek status git & deteksi perubahan kode ----
 echo -e "${BLUE}📥 [1/4] Mengambil status & update Git...${NC}"
 

@@ -299,6 +299,16 @@ OpenWA/
 
 ### [2026-09-11] — Smart Deployment, SSO SIPETRA Production Setup & PostgreSQL Migration Fixes
 
+- **Penanganan Error Konfigurasi SSO & URL Dinamis (`SsoController` & `deploy.sh`)**:
+  - Memperbaiki penanganan konfigurasi SSO yang belum lengkap pada server agar tidak melempar HTTP 500 error mentah (`"SSO configuration is missing."`), melainkan me-redirect kembali ke halaman login dashboard secara ramah dengan penjelasan variabel `.env` yang belum diisi.
+  - Menambahkan resolusi URL dashboard dinamis (`getDashboardUrl`) berbasis header HTTP (`referer`, `x-forwarded-host`/`x-forwarded-proto`) agar redirect tidak salah alamat ke `localhost:8080` pada server produksi.
+  - Menambahkan fallback otomatis `SIPETRA_REDIRECT_URI` (`${dashboardUrl}/auth/sipetra/callback`) dan `SIPETRA_BASE_URL` (`https://bpsdemak.com`).
+  - Menambahkan `env_file: - .env` pada service `openwa` di `docker-compose.prod.yml` untuk memastikan seluruh variabel `.env` terinjeksi ke container.
+  - Menambahkan pengecekan pra-deploy di `deploy.sh` yang memberi peringatan informatif jika variabel kredensial SSO di `.env` belum diisi.
+- **Perbaikan Glitch Infinite Re-render & Toast Stacking (`Contacts.tsx`, `Toast.tsx`, `api.ts`)**:
+  - Mengatasi glitch re-render tanpa henti pada halaman Kontak dengan menstabilkan pemanggilan `loadImportedContacts` dan `loadGroups` menggunakan `useRef` untuk dependensi toast.
+  - Mencegah penumpukan toast error ganda pada `Toast.tsx` dengan filter duplikasi judul toast aktif.
+  - Menambahkan auto-redirect ke `/login` dan pembersihan `sessionStorage` pada `api.ts` jika API backend mengembalikan status 401 Unauthorized.
 - **Selective Docker Build & State Persistence di `deploy.sh`**: Memperbarui skrip deployment agar mendeteksi perubahan git diff secara cerdas (`git diff --name-only`) dengan pelacakan commit deployment terakhir (`.deploy_commit`). Build hanya dijalankan untuk service yang mengalami perubahan kode (hanya Backend jika folder `src/` dsb berubah, hanya Dashboard jika folder `dashboard/` berubah, atau lewati build sepenuhnya jika hanya dokumen/skrip/konfigurasi yang berubah). Mendukung argumen `backend`, `dashboard`, `--build`, `--force`, dan `-y`.
 - **Penamaan Image Konsisten di `docker-compose.prod.yml`**: Menetapkan tag eksplisit `openwa-api:latest` dan `openwa-dashboard:latest` untuk mempermudah pengecekan ketersediaan image di server host.
 - **Konfigurasi & Routing SSO SIPETRA di Production**:

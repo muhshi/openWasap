@@ -44,6 +44,8 @@ services:
       - "${API_PORT:-2785}:2785"
     expose:
       - "2785"
+    env_file:
+      - .env
     environment:
       # Core settings
       - NODE_ENV=production
