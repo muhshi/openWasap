@@ -507,5 +507,21 @@
       "savedDesc": "נדרש אתחול שרת כדי להחיל את השינויים.",
       "saveFailed": "השמירה נכשלה"
     }
+  },
+  "login": {
+    "version": "גרסה {{version}} • {{date}}",
+    "apiKey": "מפתח API",
+    "apiKeyPlaceholder": "הזן את מפתח ה-API שלך",
+    "connecting": "מתחבר...",
+    "connect": "התחבר",
+    "invalidKey": "מפתח API לא חוקי",
+    "connectionError": "שגיאת חיבור. אנא בדוק את הרשת או השרת.",
+    "apiKeyRequired": "נדרש מפתח API",
+    "or": "או",
+    "ssoSipetra": "התחבר באמצעות SIPETRA SSO",
+    "ssoSubtitle": "Single Sign-On BPS Kabupaten Demak",
+    "help": "זקוק לעזרה?",
+    "viewDocs": "צפה בתיעוד",
+    "footer": "OpenWA • Open Source WhatsApp API Gateway"
   }
 }

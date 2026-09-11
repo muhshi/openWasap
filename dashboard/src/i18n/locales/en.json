@@ -543,5 +543,21 @@
       "loadFailed": "Failed to load session contacts: {{error}}"
     },
     "noContacts": "No contacts found. Select an active session or import a CSV/Excel file to populate the list."
+  },
+  "login": {
+    "version": "v{{version}} • {{date}}",
+    "apiKey": "API Key",
+    "apiKeyPlaceholder": "Enter your API key",
+    "connecting": "Connecting...",
+    "connect": "Connect",
+    "invalidKey": "Invalid API Key",
+    "connectionError": "Connection error. Please check your network or server.",
+    "apiKeyRequired": "API Key is required",
+    "or": "or",
+    "ssoSipetra": "Masuk dengan SIPETRA SSO",
+    "ssoSubtitle": "Single Sign-On BPS Kabupaten Demak",
+    "help": "Need help?",
+    "viewDocs": "View documentation",
+    "footer": "OpenWA • Open Source WhatsApp API Gateway"
   }
 }

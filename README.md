@@ -306,6 +306,12 @@ OpenWA/
   - Meneruskan variabel environment `SIPETRA_CLIENT_ID`, `SIPETRA_CLIENT_SECRET`, `SIPETRA_REDIRECT_URI`, `SIPETRA_BASE_URL`, dan `DASHBOARD_URL` ke container `openwa` di `docker-compose.prod.yml`.
 - **Perbaikan Kompatibilitas Migrasi Database (PostgreSQL)**:
   - Merevisi 4 file migrasi dari branch `ejay` (`ContactGroupMemberMetadata`, `AddIsSharedToContacts`, `UpdateApiKeyRoleToUser`, `AddUserAndSso`) agar kompatibel penuh dengan PostgreSQL tanpa error tipe data `datetime` dan tanpa perintah `DROP TABLE` untuk menjaga keamanan dan integritas data.
+- **Perbaikan Autentikasi SSO SIPETRA (Fix Token Hashing Bug)**:
+  - Memperbaiki `AuthService.syncSsoUser` agar selalu me-regenerate API key mentah (`rawKey`) yang valid setiap kali user login via SSO dan meng-update hash di database. Mengatasi bug di mana login berulang mengirimkan string hash (`keyHash`) ke URL sehingga ditolak dengan error "Invalid API key".
+  - Memperbaiki `SsoController` agar hanya meneruskan `rawKey` yang valid ke dashboard.
+- **Redesain Tombol & Aset Logo SSO SIPETRA**:
+  - Menambahkan aset resmi logo BPS (`logo_bps.png`) dan logo SIPETRA BPS Demak (`logo_sipetra.png`) ke `dashboard/public` dengan penanganan fallback otomatis.
+  - Mendesain ulang tombol SSO pada halaman Login dengan tile logo berlatar putih bersih, kontras teks optimal di Light & Dark Mode, efek hover biru BPS (`#0284c7`), dan translasi i18n (`en` & `he`) untuk label login.
 - **Perbaikan Kompilasi Backend & Dashboard**:
   - Menambahkan import dekorator `Put` di `imported-contact.controller.ts`.
   - Memperbaiki properti interface `ownerApiKeyId` di `dashboard/src/services/api.ts` dan menghubungkan fungsi bulk update/delete privacy di `dashboard/src/pages/Contacts.tsx`.

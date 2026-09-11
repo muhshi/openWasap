@@ -312,11 +312,11 @@ export class AuthService implements OnModuleInit {
     }
 
     let apiKey = await this.apiKeyRepository.findOne({ where: { userId: user.id } });
-    if (!apiKey) {
-      const rawKey = 'owa_k1_' + randomBytes(32).toString('hex');
-      const keyHash = this.hashKey(rawKey);
-      const keyPrefix = rawKey.substring(0, 12);
+    const rawKey = 'owa_k1_' + randomBytes(32).toString('hex');
+    const keyHash = this.hashKey(rawKey);
+    const keyPrefix = rawKey.substring(0, 12);
 
+    if (!apiKey) {
       apiKey = this.apiKeyRepository.create({
         name: 'SSO Key - ' + user.name,
         keyHash,
@@ -324,9 +324,15 @@ export class AuthService implements OnModuleInit {
         role: ApiKeyRole.USER,
         userId: user.id,
       });
-      await this.apiKeyRepository.save(apiKey);
-      (apiKey as any).rawKey = rawKey;
+    } else {
+      apiKey.keyHash = keyHash;
+      apiKey.keyPrefix = keyPrefix;
+      apiKey.isActive = true;
+      apiKey.name = 'SSO Key - ' + user.name;
     }
+    await this.apiKeyRepository.save(apiKey);
+    (apiKey as any).rawKey = rawKey;
+
     return apiKey;
   }
 }

@@ -127,15 +127,32 @@ export function Login({ onLogin }: LoginProps) {
 
         <div className="sso-divider">
           <div className="sso-divider-line"></div>
-          <span className="sso-divider-text">{t('login.or') || 'atau'}</span>
+          <span className="sso-divider-text">{t('login.or')}</span>
           <div className="sso-divider-line"></div>
         </div>
 
-        <a href="/auth/sipetra/redirect" className="sso-button">
-          <img src="/logo_bps.png" alt="Logo BPS" className="sso-logo" loading="lazy" />
-          <span>{t('login.ssoSipetra') || 'Masuk dengan SIPETRA SSO'}</span>
+        <a href="/auth/sipetra/redirect" className="sso-button" id="sso-sipetra-btn">
+          <div className="sso-logo-box">
+            <img
+              src="/logo_bps.png"
+              alt="Logo BPS Demak"
+              className="sso-logo"
+              loading="lazy"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.dataset.fallback) {
+                  target.dataset.fallback = 'true';
+                  target.src = '/logo_sipetra.png';
+                }
+              }}
+            />
+          </div>
+          <div className="sso-label-box">
+            <span className="sso-label-title">{t('login.ssoSipetra')}</span>
+            <span className="sso-label-subtitle">{t('login.ssoSubtitle')}</span>
+          </div>
           <svg className="sso-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"/>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7"/>
           </svg>
         </a>
 

@@ -87,7 +87,11 @@ export class SsoController {
 
       // Sync user and get API key
       const apiKey = await this.authService.syncSsoUser(profile, tokens);
-      const keyToReturn = (apiKey as any).rawKey || (apiKey as any).keyHash; // If rawKey is lost, we can't show it but we just generated it.
+      const keyToReturn = (apiKey as any).rawKey;
+
+      if (!keyToReturn) {
+        return res.redirect(`${dashboardUrl}/login?error=KeyGenerationFailed`);
+      }
 
       // Redirect to dashboard with the API key
       return res.redirect(`${dashboardUrl}/login?sso_key=${encodeURIComponent(keyToReturn)}`);
