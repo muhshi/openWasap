@@ -32,6 +32,7 @@ export interface ImportedContact {
   name: string;
   phone: string;
   isShared?: boolean;
+  ownerApiKeyId?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -42,6 +43,7 @@ export interface ContactGroup {
   description?: string;
   memberCount: number;
   isShared?: boolean;
+  ownerApiKeyId?: string | null;
   createdAt: string;
   updatedAt: string;
 }

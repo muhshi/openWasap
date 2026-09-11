@@ -31,6 +31,7 @@ services:
 
   # ===== CORE: OpenWA Backend API =====
   openwa:
+    image: openwa-api:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -66,6 +67,12 @@ services:
       - STORAGE_LOCAL_PATH=/app/data/media
       - PLUGINS_ENABLED=true
       - PLUGINS_DIR=/app/data/plugins
+      # SIPETRA SSO
+      - SIPETRA_CLIENT_ID=${SIPETRA_CLIENT_ID}
+      - SIPETRA_CLIENT_SECRET=${SIPETRA_CLIENT_SECRET}
+      - SIPETRA_REDIRECT_URI=${SIPETRA_REDIRECT_URI}
+      - SIPETRA_BASE_URL=${SIPETRA_BASE_URL:-https://bpsdemak.com}
+      - DASHBOARD_URL=${DASHBOARD_URL}
     volumes:
       - openwa-prod-data:/app/data
     networks:
@@ -80,6 +87,7 @@ services:
 
   # ===== CORE: Dashboard Frontend (nginx serving static React app) =====
   openwa-dashboard:
+    image: openwa-dashboard:latest
     build:
       context: ./dashboard
       dockerfile: Dockerfile

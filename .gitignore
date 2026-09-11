@@ -62,6 +62,7 @@ uploads/
 *.bak
 *.tmp
 *.temp
+.deploy_commit
 
 # Git worktrees
 .worktrees/

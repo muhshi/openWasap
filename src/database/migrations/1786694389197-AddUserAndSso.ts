@@ -4,41 +4,26 @@ export class AddUserAndSso1786694389197 implements MigrationInterface {
     name = 'AddUserAndSso1786694389197'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`CREATE TABLE "knowledges" ("id" varchar PRIMARY KEY NOT NULL, "content" text NOT NULL, "metadata" text, "embedding" text, "createdAt" datetime NOT NULL DEFAULT (datetime('now')), "updatedAt" datetime NOT NULL DEFAULT (datetime('now')))`);
-        await queryRunner.query(`CREATE TABLE "api_keys" ("id" varchar PRIMARY KEY NOT NULL, "name" varchar(100) NOT NULL, "keyHash" varchar(64) NOT NULL, "keyPrefix" varchar(20) NOT NULL, "role" varchar(20) NOT NULL DEFAULT ('user'), "allowedIps" text, "allowedSessions" text, "isActive" boolean NOT NULL DEFAULT (1), "expiresAt" text, "lastUsedAt" text, "usageCount" integer NOT NULL DEFAULT (0), "userId" varchar, "createdAt" datetime NOT NULL DEFAULT (datetime('now')), "updatedAt" datetime NOT NULL DEFAULT (datetime('now')))`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_df3b25181df0b4b59bd93f16e1" ON "api_keys" ("keyHash") `);
-        await queryRunner.query(`CREATE TABLE "users" ("id" varchar PRIMARY KEY NOT NULL, "sipetraId" varchar(100), "name" varchar(150) NOT NULL, "email" varchar(150), "nip" varchar(50), "jabatan" varchar(150), "sipetraToken" text, "sipetraRefreshToken" text, "createdAt" datetime NOT NULL DEFAULT (datetime('now')), "updatedAt" datetime NOT NULL DEFAULT (datetime('now')))`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_386a4692e4955a3ab784e2f661" ON "users" ("sipetraId") `);
-        await queryRunner.query(`CREATE TABLE "audit_logs" ("id" varchar PRIMARY KEY NOT NULL, "action" varchar(50) NOT NULL, "severity" varchar(10) NOT NULL DEFAULT ('info'), "apiKeyId" varchar(36), "apiKeyName" varchar(100), "sessionId" varchar(36), "sessionName" varchar(100), "ipAddress" varchar(45), "userAgent" varchar(500), "method" varchar(10), "path" varchar(500), "statusCode" integer, "metadata" text, "errorMessage" text, "createdAt" datetime NOT NULL DEFAULT (datetime('now')))`);
-        await queryRunner.query(`CREATE INDEX "IDX_cee5459245f652b75eb2759b4c" ON "audit_logs" ("action") `);
-        await queryRunner.query(`CREATE INDEX "IDX_741fa976d1e04e695f3aa23cb8" ON "audit_logs" ("apiKeyId") `);
-        await queryRunner.query(`CREATE INDEX "IDX_dd2b6e43c767b6b5b2bb227ace" ON "audit_logs" ("sessionId") `);
-        await queryRunner.query(`CREATE INDEX "IDX_c69efb19bf127c97e6740ad530" ON "audit_logs" ("createdAt") `);
-        await queryRunner.query(`DROP INDEX "IDX_df3b25181df0b4b59bd93f16e1"`);
-        await queryRunner.query(`CREATE TABLE "temporary_api_keys" ("id" varchar PRIMARY KEY NOT NULL, "name" varchar(100) NOT NULL, "keyHash" varchar(64) NOT NULL, "keyPrefix" varchar(20) NOT NULL, "role" varchar(20) NOT NULL DEFAULT ('user'), "allowedIps" text, "allowedSessions" text, "isActive" boolean NOT NULL DEFAULT (1), "expiresAt" text, "lastUsedAt" text, "usageCount" integer NOT NULL DEFAULT (0), "userId" varchar, "createdAt" datetime NOT NULL DEFAULT (datetime('now')), "updatedAt" datetime NOT NULL DEFAULT (datetime('now')), CONSTRAINT "FK_6c2e267ae764a9413b863a29342" FOREIGN KEY ("userId") REFERENCES "users" ("id") ON DELETE CASCADE ON UPDATE NO ACTION)`);
-        await queryRunner.query(`INSERT INTO "temporary_api_keys"("id", "name", "keyHash", "keyPrefix", "role", "allowedIps", "allowedSessions", "isActive", "expiresAt", "lastUsedAt", "usageCount", "userId", "createdAt", "updatedAt") SELECT "id", "name", "keyHash", "keyPrefix", "role", "allowedIps", "allowedSessions", "isActive", "expiresAt", "lastUsedAt", "usageCount", "userId", "createdAt", "updatedAt" FROM "api_keys"`);
-        await queryRunner.query(`DROP TABLE "api_keys"`);
-        await queryRunner.query(`ALTER TABLE "temporary_api_keys" RENAME TO "api_keys"`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_df3b25181df0b4b59bd93f16e1" ON "api_keys" ("keyHash") `);
+        const isPostgres = queryRunner.connection.options.type === 'postgres';
+        if (isPostgres) {
+            await queryRunner.query(`CREATE TABLE IF NOT EXISTS "users" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "sipetraId" varchar(100), "name" varchar(150) NOT NULL, "email" varchar(150), "nip" varchar(50), "jabatan" varchar(150), "sipetraToken" text, "sipetraRefreshToken" text, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), PRIMARY KEY ("id"))`);
+            await queryRunner.query(`CREATE UNIQUE INDEX IF NOT EXISTS "IDX_386a4692e4955a3ab784e2f661" ON "users" ("sipetraId")`);
+            await queryRunner.query(`ALTER TABLE "api_keys" ADD COLUMN IF NOT EXISTS "userId" uuid REFERENCES "users"("id") ON DELETE CASCADE`);
+        } else {
+            const hasUsers = await queryRunner.hasTable("users").catch(() => false);
+            if (!hasUsers) {
+                await queryRunner.query(`CREATE TABLE "users" ("id" varchar PRIMARY KEY NOT NULL, "sipetraId" varchar(100), "name" varchar(150) NOT NULL, "email" varchar(150), "nip" varchar(50), "jabatan" varchar(150), "sipetraToken" text, "sipetraRefreshToken" text, "createdAt" datetime NOT NULL DEFAULT (datetime('now')), "updatedAt" datetime NOT NULL DEFAULT (datetime('now')))`);
+                await queryRunner.query(`CREATE UNIQUE INDEX "IDX_386a4692e4955a3ab784e2f661" ON "users" ("sipetraId")`);
+            }
+            const hasUserCol = await queryRunner.hasColumn("api_keys", "userId").catch(() => false);
+            if (!hasUserCol) {
+                await queryRunner.query(`ALTER TABLE "api_keys" ADD COLUMN "userId" varchar`);
+            }
+        }
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`DROP INDEX "IDX_df3b25181df0b4b59bd93f16e1"`);
-        await queryRunner.query(`ALTER TABLE "api_keys" RENAME TO "temporary_api_keys"`);
-        await queryRunner.query(`CREATE TABLE "api_keys" ("id" varchar PRIMARY KEY NOT NULL, "name" varchar(100) NOT NULL, "keyHash" varchar(64) NOT NULL, "keyPrefix" varchar(20) NOT NULL, "role" varchar(20) NOT NULL DEFAULT ('user'), "allowedIps" text, "allowedSessions" text, "isActive" boolean NOT NULL DEFAULT (1), "expiresAt" text, "lastUsedAt" text, "usageCount" integer NOT NULL DEFAULT (0), "userId" varchar, "createdAt" datetime NOT NULL DEFAULT (datetime('now')), "updatedAt" datetime NOT NULL DEFAULT (datetime('now')))`);
-        await queryRunner.query(`INSERT INTO "api_keys"("id", "name", "keyHash", "keyPrefix", "role", "allowedIps", "allowedSessions", "isActive", "expiresAt", "lastUsedAt", "usageCount", "userId", "createdAt", "updatedAt") SELECT "id", "name", "keyHash", "keyPrefix", "role", "allowedIps", "allowedSessions", "isActive", "expiresAt", "lastUsedAt", "usageCount", "userId", "createdAt", "updatedAt" FROM "temporary_api_keys"`);
-        await queryRunner.query(`DROP TABLE "temporary_api_keys"`);
-        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_df3b25181df0b4b59bd93f16e1" ON "api_keys" ("keyHash") `);
-        await queryRunner.query(`DROP INDEX "IDX_c69efb19bf127c97e6740ad530"`);
-        await queryRunner.query(`DROP INDEX "IDX_dd2b6e43c767b6b5b2bb227ace"`);
-        await queryRunner.query(`DROP INDEX "IDX_741fa976d1e04e695f3aa23cb8"`);
-        await queryRunner.query(`DROP INDEX "IDX_cee5459245f652b75eb2759b4c"`);
-        await queryRunner.query(`DROP TABLE "audit_logs"`);
-        await queryRunner.query(`DROP INDEX "IDX_386a4692e4955a3ab784e2f661"`);
-        await queryRunner.query(`DROP TABLE "users"`);
-        await queryRunner.query(`DROP INDEX "IDX_df3b25181df0b4b59bd93f16e1"`);
-        await queryRunner.query(`DROP TABLE "api_keys"`);
-        await queryRunner.query(`DROP TABLE "knowledges"`);
+        // Do not drop tables or columns to preserve database integrity
     }
 
 }

@@ -300,6 +300,19 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 
 ## 📝 Changelog
 
+### [2026-09-11] — Smart Deployment, SSO SIPETRA Production Setup & PostgreSQL Migration Fixes
+
+- **Selective Docker Build & State Persistence di `deploy.sh`**: Memperbarui skrip deployment agar mendeteksi perubahan git diff secara cerdas (`git diff --name-only`) dengan pelacakan commit deployment terakhir (`.deploy_commit`). Build hanya dijalankan untuk service yang mengalami perubahan kode (hanya Backend jika folder `src/` dsb berubah, hanya Dashboard jika folder `dashboard/` berubah, atau lewati build sepenuhnya jika hanya dokumen/skrip/konfigurasi yang berubah). Mendukung argumen `backend`, `dashboard`, `--build`, `--force`, dan `-y`.
+- **Penamaan Image Konsisten di `docker-compose.prod.yml`**: Menetapkan tag eksplisit `openwa-api:latest` dan `openwa-dashboard:latest` untuk mempermudah pengecekan ketersediaan image di server host.
+- **Konfigurasi & Routing SSO SIPETRA di Production**:
+  - Menambahkan proxy location `/auth/sipetra/` di `dashboard/nginx.conf` agar permintaan login dan callback OAuth2 SIPETRA diteruskan dengan benar ke container backend di lingkungan Docker production.
+  - Meneruskan variabel environment `SIPETRA_CLIENT_ID`, `SIPETRA_CLIENT_SECRET`, `SIPETRA_REDIRECT_URI`, `SIPETRA_BASE_URL`, dan `DASHBOARD_URL` ke container `openwa` di `docker-compose.prod.yml`.
+- **Perbaikan Kompatibilitas Migrasi Database (PostgreSQL)**:
+  - Merevisi 4 file migrasi dari branch `ejay` (`ContactGroupMemberMetadata`, `AddIsSharedToContacts`, `UpdateApiKeyRoleToUser`, `AddUserAndSso`) agar kompatibel penuh dengan PostgreSQL tanpa error tipe data `datetime` dan tanpa perintah `DROP TABLE` untuk menjaga keamanan dan integritas data.
+- **Perbaikan Kompilasi Backend & Dashboard**:
+  - Menambahkan import dekorator `Put` di `imported-contact.controller.ts`.
+  - Memperbaiki properti interface `ownerApiKeyId` di `dashboard/src/services/api.ts` dan menghubungkan fungsi bulk update/delete privacy di `dashboard/src/pages/Contacts.tsx`.
+
 ### [2026-06-06] — Master API Key, Database Agnostic Columns & Group Member Blast
 
 - **Master API Key Support**: Menambahkan validasi `API_MASTER_KEY` dari environment variabel `.env` di `AuthService`. Jika kunci yang dikirimkan cocok dengan master key, user otomatis mendapatkan peran `ADMIN` dengan akses global.

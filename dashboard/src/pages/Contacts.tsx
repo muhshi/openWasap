@@ -120,8 +120,6 @@ export function Contacts() {
   const [addToGroupNewDesc, setAddToGroupNewDesc] = useState('');
   const [isAddingToGroup, setIsAddingToGroup] = useState(false);
 
-  // Bulk delete
-  const [isDeletingBulk, setIsDeletingBulk] = useState(false);
 
   // ── Load Data ───────────────────────────────────────────────────────────────
 
@@ -686,26 +684,6 @@ export function Contacts() {
     }
   };
 
-  // ── Bulk Delete ─────────────────────────────────────────────────────────────
-
-  const handleBulkDelete = async () => {
-    if (selectedContactIds.length === 0) return;
-    if (!window.confirm(`Hapus ${selectedContactIds.length} kontak yang dipilih secara permanen dari database?`)) return;
-    setIsDeletingBulk(true);
-    let deleted = 0;
-    try {
-      for (const id of selectedContactIds) {
-        try { await importedContactApi.delete(id); deleted++; } catch { /* skip */ }
-      }
-      setImportedContacts(prev => prev.filter(c => !selectedContactIds.includes(c.id)));
-      setSelectedContactIds([]);
-      toast.info(`${deleted} kontak berhasil dihapus.`);
-    } catch (err) {
-      toast.error('Terjadi kesalahan saat menghapus kontak.');
-    } finally {
-      setIsDeletingBulk(false);
-    }
-  };
 
   // ── Blast WA (Unified) ──────────────────────────────────────────────────────
 
@@ -877,13 +855,31 @@ export function Contacts() {
                   >
                     <FolderOpen size={16} /> Tambahkan ke Group
                   </button>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <button
+                      className="add-contact-btn"
+                      style={{ flex: 1, margin: 0, background: 'rgba(14,165,233,0.08)', color: '#0284c7', border: '1px solid rgba(14,165,233,0.2)', fontSize: '0.8rem' }}
+                      onClick={() => handleBulkUpdateContacts(true)}
+                      title="Set kontak terpilih menjadi Shared"
+                    >
+                      <Globe size={14} /> Shared
+                    </button>
+                    <button
+                      className="add-contact-btn"
+                      style={{ flex: 1, margin: 0, background: 'rgba(100,116,139,0.08)', color: '#475569', border: '1px solid rgba(100,116,139,0.2)', fontSize: '0.8rem' }}
+                      onClick={() => handleBulkUpdateContacts(false)}
+                      title="Set kontak terpilih menjadi Private"
+                    >
+                      <Lock size={14} /> Private
+                    </button>
+                  </div>
                   <button
                     className="add-contact-btn"
                     style={{ marginTop: '0.5rem', background: 'rgba(239,68,68,0.08)', color: '#dc2626', border: '1px solid rgba(239,68,68,0.2)' }}
-                    onClick={handleBulkDelete}
-                    disabled={isDeletingBulk}
+                    onClick={handleBulkDeleteContacts}
+                    disabled={isLoadingContacts}
                   >
-                    {isDeletingBulk ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
+                    {isLoadingContacts ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
                     Hapus {selectedContactIds.length} Kontak
                   </button>
                 </>
@@ -986,11 +982,19 @@ export function Contacts() {
                                 <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                   {c.name}
                                   {c.isShared ? (
-                                    <span title="Kontak Publik (Shared)" style={{ display: 'flex' }}>
+                                    <span
+                                      title="Kontak Publik (Shared) - Klik untuk ubah privasi"
+                                      style={{ display: 'flex', cursor: 'pointer' }}
+                                      onClick={(e) => { e.stopPropagation(); handleToggleContactPrivacy(c); }}
+                                    >
                                       <Globe size={12} style={{ color: '#0ea5e9' }} />
                                     </span>
                                   ) : (
-                                    <span title="Kontak Pribadi (Private)" style={{ display: 'flex' }}>
+                                    <span
+                                      title="Kontak Pribadi (Private) - Klik untuk ubah privasi"
+                                      style={{ display: 'flex', cursor: 'pointer' }}
+                                      onClick={(e) => { e.stopPropagation(); handleToggleContactPrivacy(c); }}
+                                    >
                                       <Lock size={12} style={{ color: '#94a3b8' }} />
                                     </span>
                                   )}
@@ -1121,6 +1125,26 @@ export function Contacts() {
                 )}
               </div>
 
+              {selectedGroupIds.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', padding: '0.5rem 0.75rem', background: 'rgba(37,99,235,0.06)', borderRadius: 8, border: '1px solid rgba(37,99,235,0.15)', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--primary-color,#2563eb)' }}>
+                    {selectedGroupIds.length} grup dipilih
+                  </span>
+                  <button className="btn-secondary" style={{ fontSize: '0.78rem', padding: '0.25rem 0.5rem' }} onClick={() => handleBulkUpdateGroups(true)}>
+                    <Globe size={13} style={{ marginRight: 4 }} /> Set Shared
+                  </button>
+                  <button className="btn-secondary" style={{ fontSize: '0.78rem', padding: '0.25rem 0.5rem' }} onClick={() => handleBulkUpdateGroups(false)}>
+                    <Lock size={13} style={{ marginRight: 4 }} /> Set Private
+                  </button>
+                  <button className="btn-danger" style={{ fontSize: '0.78rem', padding: '0.25rem 0.5rem' }} onClick={handleBulkDeleteGroups}>
+                    <Trash2 size={13} style={{ marginRight: 4 }} /> Hapus
+                  </button>
+                  <button style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)' }} onClick={() => setSelectedGroupIds([])}>
+                    Batal
+                  </button>
+                </div>
+              )}
+
               {isLoadingGroups ? (
                 <div className="table-loading">
                   <Loader2 className="animate-spin" size={24} />
@@ -1147,11 +1171,19 @@ export function Contacts() {
                             <FolderOpen size={18} style={{ color: 'var(--primary-color,#2563eb)', flexShrink: 0 }} />
                             <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary,#1e293b)' }}>{group.name}</h3>
                             {group.isShared ? (
-                              <div title="Grup ini dibagikan ke semua pengguna" style={{ background: '#e0f2fe', color: '#0284c7', padding: '0.15rem 0.4rem', borderRadius: 12, fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                              <div
+                                title="Grup ini dibagikan ke semua pengguna - Klik untuk ubah"
+                                style={{ background: '#e0f2fe', color: '#0284c7', padding: '0.15rem 0.4rem', borderRadius: 12, fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600, cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); handleToggleGroupPrivacy(group); }}
+                              >
                                 <Globe size={12} /> Shared
                               </div>
                             ) : (
-                              <div title="Grup ini hanya bisa dilihat oleh Anda" style={{ background: '#f1f5f9', color: '#64748b', padding: '0.15rem 0.4rem', borderRadius: 12, fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
+                              <div
+                                title="Grup ini hanya bisa dilihat oleh Anda - Klik untuk ubah"
+                                style={{ background: '#f1f5f9', color: '#64748b', padding: '0.15rem 0.4rem', borderRadius: 12, fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: 4, fontWeight: 600, cursor: 'pointer' }}
+                                onClick={(e) => { e.stopPropagation(); handleToggleGroupPrivacy(group); }}
+                              >
                                 <Lock size={12} /> Private
                               </div>
                             )}
