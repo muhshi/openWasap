@@ -153,7 +153,7 @@ export function Sessions() {
     // Immediately open modal with loading spinner while engine initializes
     setQrData({ sessionId: id, sessionName, qrCode: '' });
 
-    if (session && ['initializing', 'connecting', 'qr_ready'].includes(session.status)) {
+    if (session && ['initializing', 'connecting', 'qr_ready', 'authenticating'].includes(session.status)) {
       return;
     }
 
@@ -206,7 +206,7 @@ export function Sessions() {
       statusFilter === 'all' ||
       (statusFilter === 'active' && s.status === 'ready') ||
       (statusFilter === 'inactive' && ['created', 'idle', 'disconnected'].includes(s.status)) ||
-      (statusFilter === 'connecting' && ['initializing', 'connecting', 'qr_ready'].includes(s.status));
+      (statusFilter === 'connecting' && ['initializing', 'connecting', 'qr_ready', 'authenticating'].includes(s.status));
     return matchesSearch && matchesStatus;
   });
 
@@ -461,17 +461,26 @@ export function Sessions() {
                 <span className={`status-pill ${session.status}`}>{formatStatus(session.status)}</span>
               </div>
 
-              {session.status === 'initializing' || session.status === 'connecting' || session.status === 'qr_ready' ? (
+              {['initializing', 'connecting', 'qr_ready', 'authenticating'].includes(session.status) ? (
                 <div className="qr-placeholder">
-                  <QrCode size={80} className="qr-icon" />
-                  <p>{session.status === 'qr_ready' ? t('sessions.qr.scanToConnect') : t('sessions.qr.preparing')}</p>
-                  <button
-                    className="btn-sm"
-                    onClick={() => handleShowQR(session.id)}
-                    disabled={session.status !== 'qr_ready'}
-                  >
-                    {session.status === 'qr_ready' ? t('sessions.qr.showQr') : t('sessions.qr.loading')}
-                  </button>
+                  {session.status === 'authenticating' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '16px 0' }}>
+                      <Loader2 size={40} className="animate-spin text-primary" />
+                      <p style={{ margin: 0 }}>{t('sessions.qr.authenticating', { defaultValue: 'Authenticating with WhatsApp...' })}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <QrCode size={80} className="qr-icon" />
+                      <p>{session.status === 'qr_ready' ? t('sessions.qr.scanToConnect') : t('sessions.qr.preparing')}</p>
+                      <button
+                        className="btn-sm"
+                        onClick={() => handleShowQR(session.id)}
+                        disabled={session.status !== 'qr_ready'}
+                      >
+                        {session.status === 'qr_ready' ? t('sessions.qr.showQr') : t('sessions.qr.loading')}
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="session-info">
@@ -501,7 +510,7 @@ export function Sessions() {
                     <Play size={16} />
                     {t('sessions.actions.start')}
                   </button>
-                ) : canWrite && ['ready', 'initializing', 'connecting', 'qr_ready'].includes(session.status) ? (
+                ) : canWrite && ['ready', 'initializing', 'connecting', 'qr_ready', 'authenticating'].includes(session.status) ? (
                   <button className="btn-action" onClick={() => handleStop(session.id)}>
                     <Square size={16} />
                     {t('sessions.actions.stop')}

@@ -107,6 +107,37 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
           type: 'local',
           path: cachePath,
         },
+        // Prevent WhatsApp Web from crashing on WAWebConnModel Conn.serialize()
+        evalOnNewDoc: () => {
+          try {
+            const win = window as any;
+            const patchConn = () => {
+              try {
+                if (typeof win.require === 'function') {
+                  const origReq = win.require;
+                  win.require = function (moduleName: string) {
+                    const res = origReq.apply(this, arguments);
+                    if (moduleName === 'WAWebConnModel' && res) {
+                      if (!res.Conn) res.Conn = {};
+                      if (typeof res.Conn.serialize !== 'function') {
+                        res.Conn.serialize = function () {
+                          return {};
+                        };
+                      }
+                    }
+                    return res;
+                  };
+                }
+              } catch {
+                // ignore
+              }
+            };
+            patchConn();
+            win.addEventListener?.('DOMContentLoaded', patchConn);
+          } catch {
+            // ignore
+          }
+        },
       });
 
       this.setupEventHandlers();
@@ -127,7 +158,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   private startAuthWatchdog(): void {
     this.stopAuthWatchdog();
     let checks = 0;
-    const maxChecks = 30; // 30 * 2000ms = 60s
+    const maxChecks = 40; // 40 * 1500ms = 60s
 
     this.authWatchdogTimer = setInterval(async () => {
       checks++;
@@ -142,57 +173,99 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
           return;
         }
 
-        const domState = await pupPage.evaluate(() => {
-          const win = window as any;
-          const hasPaneSide = !!document.querySelector('#pane-side');
-          const hasHeader = !!document.querySelector('header');
-          const hasSynced = win.require?.('WAWebSocketModel')?.Socket?.hasSynced;
-          const meUser =
-            win.require?.('WAWebUserPrefsMeUser')?.getMaybeMePnUser?.() ||
-            win.require?.('WAWebUserPrefsMeUser')?.getMaybeMeLidUser?.();
-
-          return {
-            isLoggedIn: hasPaneSide || hasHeader || !!hasSynced || !!meUser,
-            hasSynced: !!hasSynced,
-            hasPaneSide: hasPaneSide || hasHeader,
-            hasMeUser: !!meUser,
-          };
-        }).catch(() => null);
-
-        if (domState?.isLoggedIn && this.status === EngineStatus.AUTHENTICATING) {
-          this.logger.log(
-            `[Watchdog] Session ${this.config.sessionId} is authenticated in DOM (hasPaneSide: ${domState.hasPaneSide}, hasSynced: ${domState.hasSynced}, hasMeUser: ${domState.hasMeUser}). Triggering sync/ready...`,
-          );
-          this.stopAuthWatchdog();
-
-          // Try invoking onAppStateHasSyncedEvent if available
-          await pupPage.evaluate(() => {
+        const authInfo = await pupPage.evaluate(() => {
+          try {
             const win = window as any;
-            if (typeof win.onAppStateHasSyncedEvent === 'function') {
-              win.onAppStateHasSyncedEvent();
-            }
-          }).catch(() => null);
+            const doc = document;
+            const hasPaneSide = !!doc.querySelector('#pane-side');
+            const hasHeader = !!doc.querySelector('header');
+            const hasChatList = !!doc.querySelector('[data-testid="chat-list"]');
+            const hasChatInput = !!doc.querySelector('div[contenteditable="true"]');
+            const isDomReady = hasPaneSide || hasHeader || hasChatList || hasChatInput;
 
-          // Give a short moment for internal ready event to fire, otherwise trigger ready directly
-          setTimeout(() => {
-            if (this.status === EngineStatus.AUTHENTICATING && this.client) {
-              this.logger.log(`[Watchdog] Direct fallback to READY for ${this.config.sessionId}`);
+            let phone: string | null = null;
+            let pushName: string | null = null;
+
+            // 1. Check WAWebUserPrefsMeUser
+            try {
+              const meUser =
+                win.require?.('WAWebUserPrefsMeUser')?.getMaybeMePnUser?.() ||
+                win.require?.('WAWebUserPrefsMeUser')?.getMaybeMeLidUser?.();
+              if (meUser?.user) phone = String(meUser.user);
+              else if (typeof meUser === 'string') phone = meUser.split('@')[0];
+            } catch {
+              // ignore
+            }
+
+            // 2. Check localStorage last-wid
+            if (!phone) {
               try {
-                const info = this.client?.info;
-                this.phoneNumber = info?.wid?.user || null;
-                this.pushName = info?.pushname || null;
+                const lastWid = win.localStorage?.getItem('last-wid') || win.localStorage?.getItem('last-wid-md');
+                if (lastWid) {
+                  const cleaned = lastWid.replace(/["\s]/g, '').split('@')[0].split(':')[0];
+                  if (cleaned) phone = cleaned;
+                }
               } catch {
                 // ignore
               }
-              this.setStatus(EngineStatus.READY);
-              this.callbacks.onReady?.(this.phoneNumber || '', this.pushName || '');
             }
-          }, 3000);
+
+            // 3. Check Pushname
+            try {
+              pushName = win.require?.('WAWebConnModel')?.Conn?.pushname || win.localStorage?.getItem('pushname') || null;
+              if (pushName) pushName = pushName.replace(/["\s]/g, '');
+            } catch {
+              // ignore
+            }
+
+            // 4. Socket state
+            let socketConnected = false;
+            try {
+              socketConnected = win.require?.('WAWebSocketModel')?.Socket?.state === 'CONNECTED';
+            } catch {
+              // ignore
+            }
+
+            return {
+              isLoggedIn: isDomReady || socketConnected || !!phone,
+              phone,
+              pushName,
+            };
+          } catch {
+            return null;
+          }
+        }).catch(() => null);
+
+        if (authInfo?.isLoggedIn && this.status === EngineStatus.AUTHENTICATING) {
+          this.logger.log(
+            `[Watchdog] Session ${this.config.sessionId} authenticated in DOM (phone: ${authInfo.phone || 'unknown'}). Transitioning to READY...`,
+          );
+          this.stopAuthWatchdog();
+
+          const phone = authInfo.phone || '';
+          const pushName = authInfo.pushName || '';
+          this.phoneNumber = phone;
+          this.pushName = pushName;
+
+          if (this.client) {
+            if (!(this.client as any).info) {
+              (this.client as any).info = {
+                wid: {
+                  user: phone,
+                  _serialized: phone ? `${phone}@c.us` : '',
+                },
+                pushname: pushName,
+              };
+            }
+          }
+
+          this.setStatus(EngineStatus.READY);
+          this.callbacks.onReady?.(phone, pushName);
         }
       } catch (err) {
         this.logger.debug(`[Watchdog] Check error: ${String(err)}`);
       }
-    }, 2000);
+    }, 1500);
   }
 
   private setupEventHandlers(): void {

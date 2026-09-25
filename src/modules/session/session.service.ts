@@ -197,8 +197,26 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
   async start(id: string): Promise<Session> {
     const session = await this.findOne(id);
 
-    if (this.engines.has(id)) {
-      throw new BadRequestException('Session is already started');
+    const existingEngine = this.engines.get(id);
+    if (existingEngine) {
+      const status = typeof existingEngine.getStatus === 'function' ? existingEngine.getStatus() : null;
+      if (
+        !status ||
+        status === EngineStatus.READY ||
+        status === EngineStatus.INITIALIZING ||
+        status === EngineStatus.AUTHENTICATING ||
+        status === EngineStatus.QR_READY
+      ) {
+        throw new BadRequestException('Session is already started');
+      }
+
+      // If existing engine was disconnected or failed, cleanly destroy it before restarting
+      try {
+        await existingEngine.destroy();
+      } catch {
+        // ignore
+      }
+      this.engines.delete(id);
     }
 
     // Execute hook before starting
