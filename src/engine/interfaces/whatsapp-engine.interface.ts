@@ -201,6 +201,7 @@ export interface EngineEventCallbacks {
   onMessageAck?: (messageId: string, ack: number) => void;
   onDisconnected?: (reason: string) => void;
   onStateChanged?: (state: EngineStatus) => void;
+  onLoadingScreen?: (percent: number, message: string) => void;
 }
 
 export interface IWhatsAppEngine {

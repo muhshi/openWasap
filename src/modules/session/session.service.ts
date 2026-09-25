@@ -377,6 +377,12 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
           void this.updateStatus(id, newStatus);
         }
       },
+      onLoadingScreen: (percent: number, message: string): void => {
+        this.eventsGateway.emitSessionStatus(id, SessionStatus.AUTHENTICATING, {
+          loadingPercent: percent,
+          loadingMessage: message,
+        });
+      },
     });
 
     await this.updateStatus(id, SessionStatus.INITIALIZING);

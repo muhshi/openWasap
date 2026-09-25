@@ -4,6 +4,8 @@ import { io, Socket } from 'socket.io-client';
 interface SessionStatusEvent {
   sessionId: string;
   status: string;
+  loadingPercent?: number;
+  loadingMessage?: string;
   timestamp: string;
 }
 
@@ -106,6 +108,8 @@ export function useWebSocket(events: WebSocketEvents = {}) {
         events.onSessionStatus({
           sessionId,
           status: data?.status,
+          loadingPercent: data?.loadingPercent,
+          loadingMessage: data?.loadingMessage,
           timestamp: msg.timestamp,
         });
       } else if (event === 'session.qr' && events.onQRCode) {

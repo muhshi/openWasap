@@ -20,7 +20,15 @@ export function Sessions() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newSessionName, setNewSessionName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [qrData, setQrData] = useState<{ sessionId: string; sessionName: string; qrCode: string } | null>(null);
+  const [syncProgress, setSyncProgress] = useState<Record<string, { percent?: number; message?: string }>>({});
+  const [qrData, setQrData] = useState<{
+    sessionId: string;
+    sessionName: string;
+    qrCode: string;
+    status?: string;
+    loadingPercent?: number;
+    loadingMessage?: string;
+  } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
@@ -28,10 +36,30 @@ export function Sessions() {
 
   useWebSocket({
     onSessionStatus: useCallback(
-      (event: { sessionId: string; status: string }) => {
+      (event: { sessionId: string; status: string; loadingPercent?: number; loadingMessage?: string }) => {
         setSessions(prev =>
           prev.map(s => (s.id === event.sessionId ? { ...s, status: event.status as Session['status'] } : s)),
         );
+        if (event.loadingPercent !== undefined || event.loadingMessage !== undefined) {
+          setSyncProgress(prev => ({
+            ...prev,
+            [event.sessionId]: {
+              percent: event.loadingPercent,
+              message: event.loadingMessage,
+            },
+          }));
+        }
+        setQrData(prev => {
+          if (prev?.sessionId === event.sessionId) {
+            return {
+              ...prev,
+              status: event.status,
+              loadingPercent: event.loadingPercent ?? prev.loadingPercent,
+              loadingMessage: event.loadingMessage ?? prev.loadingMessage,
+            };
+          }
+          return prev;
+        });
         if (event.status === 'ready') {
           setQrData(prev => (prev?.sessionId === event.sessionId ? null : prev));
           toast.success(t('sessions.toasts.readyTitle'), t('sessions.toasts.readyDesc'));
@@ -47,11 +75,14 @@ export function Sessions() {
       (event: { sessionId: string; qrCode: string }) => {
         setQrData(prev => {
           if (prev && prev.sessionId === event.sessionId) {
-            return { ...prev, qrCode: event.qrCode };
+            return { ...prev, qrCode: event.qrCode, status: 'qr_ready' };
           }
           const session = sessions.find(s => s.id === event.sessionId);
-          return { sessionId: event.sessionId, sessionName: session?.name || '', qrCode: event.qrCode };
+          return { sessionId: event.sessionId, sessionName: session?.name || '', qrCode: event.qrCode, status: 'qr_ready' };
         });
+        setSessions(prev =>
+          prev.map(s => (s.id === event.sessionId ? { ...s, status: 'qr_ready' as Session['status'] } : s)),
+        );
       },
       [sessions],
     ),
@@ -344,7 +375,50 @@ export function Sessions() {
               </button>
             </div>
             <div className="modal-body" style={{ textAlign: 'center' }}>
-              {qrData.qrCode ? (
+              {qrData.status === 'authenticating' ? (
+                <div style={{ padding: '1.5rem 1rem' }}>
+                  <div style={{ position: 'relative', display: 'inline-block', marginBottom: '1rem' }}>
+                    <Loader2 size={52} className="animate-spin" style={{ color: '#22c55e' }} />
+                  </div>
+                  <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem', fontWeight: 600 }}>
+                    QR Code Berhasil Di-scan!
+                  </h3>
+                  <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                    {qrData.loadingMessage
+                      ? `${qrData.loadingMessage} ${qrData.loadingPercent ? `(${qrData.loadingPercent}%)` : ''}`
+                      : 'Sedang menyinkronkan data & enkripsi sesi WhatsApp...'}
+                  </p>
+
+                  {/* Progress Bar */}
+                  <div style={{ width: '100%', maxWidth: '300px', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '999px', overflow: 'hidden', margin: '0 auto 1.5rem' }}>
+                    <div
+                      style={{
+                        width: qrData.loadingPercent ? `${qrData.loadingPercent}%` : '65%',
+                        height: '100%',
+                        background: 'linear-gradient(90deg, #22c55e, #10b981)',
+                        borderRadius: '999px',
+                        transition: 'width 0.4s ease',
+                      }}
+                    />
+                  </div>
+
+                  {/* Step explanations */}
+                  <div style={{ textAlign: 'left', maxWidth: '320px', margin: '0 auto', fontSize: '0.82rem', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: '#22c55e', fontWeight: 'bold' }}>✓</span>
+                      <span>QR Code berhasil diverifikasi</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Loader2 size={12} className="animate-spin" style={{ color: '#22c55e' }} />
+                      <span style={{ color: '#f1f5f9' }}>Menyimpan sesi & download riwayat chat</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ opacity: 0.4 }}>○</span>
+                      <span style={{ opacity: 0.6 }}>Mengaktifkan koneksi (Ready)</span>
+                    </div>
+                  </div>
+                </div>
+              ) : qrData.qrCode ? (
                 <>
                   <img src={qrData.qrCode} alt="QR" style={{ maxWidth: '280px', borderRadius: '12px' }} />
                   <div className="qr-instructions">
@@ -359,7 +433,10 @@ export function Sessions() {
               ) : (
                 <div style={{ padding: '2rem' }}>
                   <Loader2 className="animate-spin" size={48} />
-                  <p>{t('sessions.qr.generating')}</p>
+                  <p style={{ marginTop: '1rem', fontWeight: 500 }}>{t('sessions.qr.generating')}</p>
+                  <p style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                    Memulai browser headless & menyiapkan sesi WhatsApp...
+                  </p>
                 </div>
               )}
             </div>
@@ -465,8 +542,15 @@ export function Sessions() {
                 <div className="qr-placeholder">
                   {session.status === 'authenticating' ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '16px 0' }}>
-                      <Loader2 size={40} className="animate-spin text-primary" />
-                      <p style={{ margin: 0 }}>{t('sessions.qr.authenticating', { defaultValue: 'Authenticating with WhatsApp...' })}</p>
+                      <Loader2 size={36} className="animate-spin text-primary" style={{ color: '#22c55e' }} />
+                      <p style={{ margin: 0, fontWeight: 500, fontSize: '0.9rem' }}>
+                        {syncProgress[session.id]?.message
+                          ? `${syncProgress[session.id].message} ${syncProgress[session.id].percent ? `(${syncProgress[session.id].percent}%)` : ''}`
+                          : 'Sedang menyinkronkan WhatsApp...'}
+                      </p>
+                      <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                        Menyimpan sesi & mengunduh chat...
+                      </span>
                     </div>
                   ) : (
                     <>
