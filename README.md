@@ -348,6 +348,7 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 - **Perbaikan Import**: Import kontak kini hanya menerima file Excel (.xlsx/.xls), tidak lagi CSV.
 
 ### [2026-09-25]
+- **Perbaikan SSO Login Berulang (Invalid API Key)**: Memperbaiki `AuthService.syncSsoUser` dan `SsoController` agar selalu membuat/merotasi dan mengembalikan `rawKey` (`owa_k1_...`) yang valid ke frontend setiap kali user SSO login ulang (sebelumnya user lama mengembalikan hash SHA-256 yang menyebabkan error double-hash `Invalid API key`).
 - **Optimasi Inisialisasi WhatsApp Engine**: Mengganti `webVersionCache` dari remote GitHub (`raw.githubusercontent.com/.../undefined.html`) menjadi local persistent cache (`/app/data/cache`) guna menghilangkan delay jaringan dan timeout saat startup sesi baru di server.
 - **Perbaikan Stuck di Authenticating**: Menambahkan timer watchdog di `WhatsAppWebJsAdapter` yang memantau sinkronisasi state dan elemen DOM WhatsApp Web (`#pane-side`, `header`, `hasSynced`, dsb.) untuk otomatis memicu event sync/ready jika event `change:hasSynced` internal WhatsApp Web terlewatkan.
 - **Peningkatan Konfigurasi Docker & Puppeteer**: Menambahkan `shm_size: '2gb'` pada container Docker `openwa` dan `openwa-api` serta menyertakan flag anti-throttling Chromium (`--disable-dev-shm-usage`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`, `--disable-renderer-backgrounding`) agar proses rendering dan sinkronisasi headless tidak membeku (freeze).
