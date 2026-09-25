@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "diagnosing-bugs": {
+      "source": "mattpocock/skills",
+      "sourceType": "github",
+      "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
+      "computedHash": "dcaaa3eb81195329f65f27574d9a67dc776160dd2e4d7798d1afb1e4a5f3695a"
+    },
     "nestjs-best-practices": {
       "source": "kadajett/agent-nestjs-skills",
       "sourceType": "github",
@@ -12,6 +18,12 @@
       "sourceType": "github",
       "skillPath": "skills/nestjs-patterns/SKILL.md",
       "computedHash": "0ff35d7a72bb462f51629b38dcb525ab0368ff755cbd1cf121c144e7d05f12a1"
+    },
+    "puppeteer-automation": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "skillPath": "puppeteer-automation/SKILL.md",
+      "computedHash": "a457e670ab106f4bcbc528941c754b751eab38819ec02133e727706c7e7c22f7"
     },
     "react": {
       "source": "vercel-labs/json-render",
@@ -29,7 +41,13 @@
       "source": "supabase/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
-      "computedHash": "0d2c4857a7d6fdcd3fbc46e458fa4c497f029cab89a01548b3defce203003932"
+      "computedHash": "128fac78002d916c8ca908245d398e634f540d8bcf20915b2b2359aeb18eba59"
+    },
+    "whatsapp-automation": {
+      "source": "claude-office-skills/skills",
+      "sourceType": "github",
+      "skillPath": "whatsapp-automation/SKILL.md",
+      "computedHash": "f9714da5a8e842b57a7728cdd01731577ca7eb785e5be0f6be1056770f915cfd"
     }
   }
 }

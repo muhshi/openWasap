@@ -347,6 +347,12 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 - **Hapus Seeder Data Hardcoded**: Hapus 54 data kontak default yang di-seed otomatis saat server pertama kali boot.
 - **Perbaikan Import**: Import kontak kini hanya menerima file Excel (.xlsx/.xls), tidak lagi CSV.
 
+### [2026-09-25]
+- **Optimasi Inisialisasi WhatsApp Engine**: Mengganti `webVersionCache` dari remote GitHub (`raw.githubusercontent.com/.../undefined.html`) menjadi local persistent cache (`/app/data/cache`) guna menghilangkan delay jaringan dan timeout saat startup sesi baru di server.
+- **Perbaikan Stuck di Authenticating**: Menambahkan timer watchdog di `WhatsAppWebJsAdapter` yang memantau sinkronisasi state dan elemen DOM WhatsApp Web (`#pane-side`, `header`, `hasSynced`, dsb.) untuk otomatis memicu event sync/ready jika event `change:hasSynced` internal WhatsApp Web terlewatkan.
+- **Peningkatan Konfigurasi Docker & Puppeteer**: Menambahkan `shm_size: '2gb'` pada container Docker `openwa` dan `openwa-api` serta menyertakan flag anti-throttling Chromium (`--disable-dev-shm-usage`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`, `--disable-renderer-backgrounding`) agar proses rendering dan sinkronisasi headless tidak membeku (freeze).
+- **Perbaikan Real-time QR Code Modal & Polling Dashboard**: Memperbaiki `useWebSocket` agar subscribe ke room event server dan mendengarkan event `session:qr`, serta memperbaiki `Sessions.tsx` agar langsung membuka modal QR dengan spinner loading saat Start diklik dan tidak menutup modal saat status QR sedang disiapkan (mengatasi race condition frontend).
+
 ### [2026-05-26]
 - **Perbaikan DTO Grup**: Menambahkan dekorator class-validator pada DTO di `group.controller.ts` untuk mengatasi error 400 Bad Request.
 - **Fitur Konten Baru (Contacts Manager)**: Menambahkan halaman Kontak terpadu di React Dashboard yang mendukung import kontak dari file CSV/Excel (.xlsx) secara client-side, standardisasi nomor telepon otomatis (`08` -> `62`), serta memicu pembuatan grup di WhatsApp langsung dari daftar kontak yang dipilih.

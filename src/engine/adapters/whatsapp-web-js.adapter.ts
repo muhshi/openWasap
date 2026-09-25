@@ -57,6 +57,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   private phoneNumber: string | null = null;
   private pushName: string | null = null;
   private callbacks: EngineEventCallbacks = {};
+  private authWatchdogTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly config: WhatsAppWebJsConfig) {
     super();
@@ -78,6 +79,9 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         '--no-first-run',
         '--no-zygote',
         '--disable-gpu',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
       ];
 
       // Add proxy configuration if provided
@@ -88,6 +92,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         );
       }
 
+      const cachePath = path.resolve(this.config.sessionDataPath, '../cache');
       this.client = new Client({
         authStrategy: new LocalAuth({
           clientId: this.config.sessionId,
@@ -99,8 +104,8 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
           executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         },
         webVersionCache: {
-          type: 'remote',
-          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
+          type: 'local',
+          path: cachePath,
         },
       });
 
@@ -110,6 +115,84 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       this.setStatus(EngineStatus.FAILED);
       throw error;
     }
+  }
+
+  private stopAuthWatchdog(): void {
+    if (this.authWatchdogTimer) {
+      clearInterval(this.authWatchdogTimer);
+      this.authWatchdogTimer = null;
+    }
+  }
+
+  private startAuthWatchdog(): void {
+    this.stopAuthWatchdog();
+    let checks = 0;
+    const maxChecks = 30; // 30 * 2000ms = 60s
+
+    this.authWatchdogTimer = setInterval(async () => {
+      checks++;
+      if (this.status !== EngineStatus.AUTHENTICATING || !this.client || checks > maxChecks) {
+        this.stopAuthWatchdog();
+        return;
+      }
+
+      try {
+        const pupPage = (this.client as any).pupPage;
+        if (!pupPage || pupPage.isClosed?.()) {
+          return;
+        }
+
+        const domState = await pupPage.evaluate(() => {
+          const win = window as any;
+          const hasPaneSide = !!document.querySelector('#pane-side');
+          const hasHeader = !!document.querySelector('header');
+          const hasSynced = win.require?.('WAWebSocketModel')?.Socket?.hasSynced;
+          const meUser =
+            win.require?.('WAWebUserPrefsMeUser')?.getMaybeMePnUser?.() ||
+            win.require?.('WAWebUserPrefsMeUser')?.getMaybeMeLidUser?.();
+
+          return {
+            isLoggedIn: hasPaneSide || hasHeader || !!hasSynced || !!meUser,
+            hasSynced: !!hasSynced,
+            hasPaneSide: hasPaneSide || hasHeader,
+            hasMeUser: !!meUser,
+          };
+        }).catch(() => null);
+
+        if (domState?.isLoggedIn && this.status === EngineStatus.AUTHENTICATING) {
+          this.logger.log(
+            `[Watchdog] Session ${this.config.sessionId} is authenticated in DOM (hasPaneSide: ${domState.hasPaneSide}, hasSynced: ${domState.hasSynced}, hasMeUser: ${domState.hasMeUser}). Triggering sync/ready...`,
+          );
+          this.stopAuthWatchdog();
+
+          // Try invoking onAppStateHasSyncedEvent if available
+          await pupPage.evaluate(() => {
+            const win = window as any;
+            if (typeof win.onAppStateHasSyncedEvent === 'function') {
+              win.onAppStateHasSyncedEvent();
+            }
+          }).catch(() => null);
+
+          // Give a short moment for internal ready event to fire, otherwise trigger ready directly
+          setTimeout(() => {
+            if (this.status === EngineStatus.AUTHENTICATING && this.client) {
+              this.logger.log(`[Watchdog] Direct fallback to READY for ${this.config.sessionId}`);
+              try {
+                const info = this.client?.info;
+                this.phoneNumber = info?.wid?.user || null;
+                this.pushName = info?.pushname || null;
+              } catch {
+                // ignore
+              }
+              this.setStatus(EngineStatus.READY);
+              this.callbacks.onReady?.(this.phoneNumber || '', this.pushName || '');
+            }
+          }, 3000);
+        }
+      } catch (err) {
+        this.logger.debug(`[Watchdog] Check error: ${String(err)}`);
+      }
+    }, 2000);
   }
 
   private setupEventHandlers(): void {
@@ -133,9 +216,15 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     this.client.on('authenticated', () => {
       this.setStatus(EngineStatus.AUTHENTICATING);
       this.qrCode = null;
+      this.startAuthWatchdog();
+    });
+
+    this.client.on('loading_screen', (percent: number, message: string) => {
+      this.logger.log(`[Sync] WhatsApp sync progress: ${percent}% (${message}) for session: ${this.config.sessionId}`);
     });
 
     this.client.on('ready', () => {
+      this.stopAuthWatchdog();
       try {
         const info = this.client?.info;
         this.phoneNumber = info?.wid?.user || null;
@@ -215,6 +304,9 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   }
 
   private setStatus(status: EngineStatus): void {
+    if (status !== EngineStatus.AUTHENTICATING) {
+      this.stopAuthWatchdog();
+    }
     this.status = status;
     this.callbacks.onStateChanged?.(status);
     this.emit('stateChanged', status);

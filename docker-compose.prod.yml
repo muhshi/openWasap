@@ -36,6 +36,7 @@ services:
       dockerfile: Dockerfile
     container_name: openwa-api
     restart: unless-stopped
+    shm_size: '2gb'
     depends_on:
       db-init:
         condition: service_completed_successfully
@@ -60,7 +61,7 @@ services:
       - ENGINE_TYPE=whatsapp-web.js
       - SESSION_DATA_PATH=/app/data/sessions
       - PUPPETEER_HEADLESS=true
-      - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu
+      - PUPPETEER_ARGS=--no-sandbox,--disable-setuid-sandbox,--disable-dev-shm-usage,--disable-gpu,--no-first-run,--no-zygote,--disable-accelerated-2d-canvas,--disable-background-timer-throttling,--disable-backgrounding-occluded-windows,--disable-renderer-backgrounding
       # Local Storage
       - STORAGE_TYPE=local
       - STORAGE_LOCAL_PATH=/app/data/media

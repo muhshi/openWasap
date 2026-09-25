@@ -63,6 +63,12 @@ export function useWebSocket(events: WebSocketEvents = {}) {
     socketRef.current.on('connect', () => {
       console.log('[WebSocket] Connected');
       setIsConnected(true);
+      // Subscribe to all session events
+      socketRef.current?.emit('message', {
+        type: 'subscribe',
+        sessionId: '*',
+        events: ['*'],
+      });
     });
 
     socketRef.current.on('disconnect', () => {
@@ -92,19 +98,46 @@ export function useWebSocket(events: WebSocketEvents = {}) {
 
     const socket = socketRef.current;
 
+    const handleWsMessage = (msg: any) => {
+      if (!msg || msg.type !== 'event' || !msg.payload) return;
+      const { event, sessionId, data } = msg.payload;
+
+      if (event === 'session.status' && events.onSessionStatus) {
+        events.onSessionStatus({
+          sessionId,
+          status: data?.status,
+          timestamp: msg.timestamp,
+        });
+      } else if (event === 'session.qr' && events.onQRCode) {
+        events.onQRCode({
+          sessionId,
+          qrCode: data?.qrCode,
+          timestamp: msg.timestamp,
+        });
+      } else if (event === 'message.received' && events.onMessage) {
+        events.onMessage({
+          sessionId,
+          message: data,
+          timestamp: msg.timestamp,
+        });
+      }
+    };
+
+    socket.on('message', handleWsMessage);
+
+    // Legacy direct event listeners fallback
     if (events.onSessionStatus) {
       socket.on('session:status', events.onSessionStatus);
     }
-
     if (events.onQRCode) {
       socket.on('session:qr', events.onQRCode);
     }
-
     if (events.onMessage) {
       socket.on('session:message', events.onMessage);
     }
 
     return () => {
+      socket.off('message', handleWsMessage);
       socket.off('session:status');
       socket.off('session:qr');
       socket.off('session:message');

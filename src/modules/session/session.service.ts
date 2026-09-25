@@ -242,7 +242,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     this.engines.set(id, engine);
 
     await engine.initialize({
-      onQRCode: (): void => {
+      onQRCode: (qr: string): void => {
         this.logger.log('QR code generated', {
           sessionId: id,
           action: 'qr_generated',
@@ -251,7 +251,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
         // Execute hook for QR event
         void this.hookManager.execute(
           'session:qr',
-          { sessionId: id },
+          { sessionId: id, qrCode: qr },
           {
             sessionId: id,
             source: 'Engine',
@@ -259,6 +259,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
         );
 
         void this.updateStatus(id, SessionStatus.QR_READY);
+        this.eventsGateway.emitQRCode(id, qr);
       },
       onReady: (phone: string, pushName: string): void => {
         this.logger.log(`Session ready: ${phone}`, {

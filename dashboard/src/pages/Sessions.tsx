@@ -33,12 +33,27 @@ export function Sessions() {
           prev.map(s => (s.id === event.sessionId ? { ...s, status: event.status as Session['status'] } : s)),
         );
         if (event.status === 'ready') {
+          setQrData(prev => (prev?.sessionId === event.sessionId ? null : prev));
           toast.success(t('sessions.toasts.readyTitle'), t('sessions.toasts.readyDesc'));
+          fetchSessions();
         } else if (event.status === 'disconnected') {
+          setQrData(prev => (prev?.sessionId === event.sessionId ? null : prev));
           toast.warning(t('sessions.toasts.disconnectedTitle'), t('sessions.toasts.disconnectedDesc'));
         }
       },
       [toast, t],
+    ),
+    onQRCode: useCallback(
+      (event: { sessionId: string; qrCode: string }) => {
+        setQrData(prev => {
+          if (prev && prev.sessionId === event.sessionId) {
+            return { ...prev, qrCode: event.qrCode };
+          }
+          const session = sessions.find(s => s.id === event.sessionId);
+          return { sessionId: event.sessionId, sessionName: session?.name || '', qrCode: event.qrCode };
+        });
+      },
+      [sessions],
     ),
   });
 
@@ -65,30 +80,35 @@ export function Sessions() {
   const fetchQR = useCallback(async (sessionId: string) => {
     try {
       const qr = await sessionApi.getQR(sessionId);
-      setQrData({ sessionId, sessionName: currentSessionName.current, qrCode: qr.qrCode });
+      if (qr?.qrCode) {
+        setQrData(prev => ({
+          sessionId,
+          sessionName: prev?.sessionName || currentSessionName.current,
+          qrCode: qr.qrCode,
+        }));
+      }
       if (qr.status === 'ready') {
         setQrData(null);
         currentSessionName.current = '';
         fetchSessions();
       }
     } catch {
-      setQrData(null);
-      currentSessionName.current = '';
-      fetchSessions();
+      // Keep modal open while QR is preparing
     }
   }, []);
 
   useEffect(() => {
     if (qrData) {
       currentSessionName.current = qrData.sessionName;
+      void fetchQR(qrData.sessionId);
       qrRefreshInterval.current = setInterval(() => {
-        fetchQR(qrData.sessionId);
-      }, 5000);
+        void fetchQR(qrData.sessionId);
+      }, 2500);
     }
     return () => {
       if (qrRefreshInterval.current) clearInterval(qrRefreshInterval.current);
     };
-  }, [qrData, fetchQR]);
+  }, [qrData?.sessionId, fetchQR]);
 
   const handleCreate = async () => {
     if (!newSessionName.trim()) return;
@@ -128,35 +148,33 @@ export function Sessions() {
 
   const handleStart = async (id: string) => {
     const session = sessions.find(s => s.id === id);
+    const sessionName = session?.name || '';
+
+    // Immediately open modal with loading spinner while engine initializes
+    setQrData({ sessionId: id, sessionName, qrCode: '' });
+
     if (session && ['initializing', 'connecting', 'qr_ready'].includes(session.status)) {
-      handleShowQR(id);
       return;
     }
 
     try {
       await sessionApi.start(id);
-      setSessions(sessions.map(s => (s.id === id ? { ...s, status: 'connecting' } : s)));
+      setSessions(prev => prev.map(s => (s.id === id ? { ...s, status: 'connecting' } : s)));
       await fetchSessions();
-      handleShowQR(id);
     } catch (err) {
       console.error('Failed to start:', err);
       await fetchSessions();
-      if (err instanceof Error && err.message.includes('already started')) {
-        handleShowQR(id);
+      if (!(err instanceof Error && err.message.includes('already started'))) {
+        toast.error('Failed to start session', err instanceof Error ? err.message : 'Unknown error');
       }
     }
   };
 
-  const handleShowQR = async (id: string) => {
+  const handleShowQR = (id: string) => {
     const session = sessions.find(s => s.id === id);
     const sessionName = session?.name || '';
-    try {
-      const qr = await sessionApi.getQR(id);
-      setQrData({ sessionId: id, sessionName, qrCode: qr.qrCode });
-    } catch (err) {
-      console.error('Failed to get QR:', err);
-      setError(t('sessions.qr.unavailable'));
-    }
+    setQrData({ sessionId: id, sessionName, qrCode: '' });
+    void fetchQR(id);
   };
 
   const handleStop = async (id: string) => {
