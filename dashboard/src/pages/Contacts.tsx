@@ -111,7 +111,7 @@ export function Contacts() {
   const [blastMode, setBlastMode] = useState<'contacts' | 'group'>('contacts');
   const [blastGroupId, setBlastGroupId] = useState('');
   const [blastMessage, setBlastMessage] = useState('');
-  const [blastDelay, setBlastDelay] = useState(3000);
+  const [blastDelay, setBlastDelay] = useState(5000);
   const [isBlasting, setIsBlasting] = useState(false);
   const [blastProgress, setBlastProgress] = useState<{
     done: number;
@@ -1940,7 +1940,7 @@ export function Contacts() {
                   onChange={e => setBlastDelay(Number(e.target.value))}
                   style={{ width: '100%', padding: '0.625rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary)', fontSize: '0.9rem', outline: 'none' }}
                 />
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>Rekomendasi: 3000ms. Jeda terlalu pendek berisiko akun WA dibatasi.</p>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>Rekomendasi: minimal 5000ms - 8000ms. Jeda terlalu pendek berisiko akun dibatasi WhatsApp.</p>
               </div>
 
               {/* Progress bar with live detailed feedback */}

@@ -319,7 +319,7 @@ export class ContactGroupController {
       throw new BadRequestException('Group tidak memiliki anggota. Tambahkan kontak ke group terlebih dahulu.');
     }
 
-    const delayMs = dto.delayMs ?? 3000;
+    const delayMs = dto.delayMs ?? 5000;
     const results: Array<{ phone: string; name: string; status: 'sent' | 'failed'; error?: string }> = [];
 
     this.logger.log(`[Blast] Initiating blast for group ${id} to ${members.length} members (Session: ${dto.sessionId}, Attachment: ${!!dto.attachment})`);
