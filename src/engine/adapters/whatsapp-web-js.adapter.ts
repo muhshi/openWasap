@@ -453,12 +453,36 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     return this.pushName;
   }
 
+  private formatChatId(chatId: string): string {
+    if (!chatId) return chatId;
+    const trimmed = chatId.trim();
+    if (trimmed.endsWith('@g.us') || trimmed.endsWith('@lid') || trimmed.endsWith('@newsletter') || trimmed.endsWith('@broadcast')) {
+      return trimmed;
+    }
+    let clean = trimmed.endsWith('@c.us') ? trimmed.slice(0, -5) : trimmed;
+    clean = clean.replace(/\D/g, '');
+    while (clean.startsWith('0')) {
+      clean = clean.substring(1);
+    }
+    if (clean.startsWith('8')) {
+      clean = '62' + clean;
+    }
+    return `${clean}@c.us`;
+  }
+
   async sendTextMessage(chatId: string, text: string): Promise<MessageResult> {
     this.ensureReady();
-    const msg = await this.client!.sendMessage(chatId, text);
+    const targetChatId = this.formatChatId(chatId);
+    let msg: any = null;
+    try {
+      msg = await this.client!.sendMessage(targetChatId, text);
+    } catch (err: any) {
+      this.logger.error(`Error sending text message to ${targetChatId}: ${err?.message || err}`);
+      throw err;
+    }
     return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
+      id: msg?.id?._serialized || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      timestamp: msg?.timestamp || Math.floor(Date.now() / 1000),
     };
   }
 
@@ -471,15 +495,20 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   }
 
   async sendAudioMessage(chatId: string, media: MediaInput): Promise<MessageResult> {
-    return this.sendMediaMessage(chatId, media);
+    return this.sendMediaMessage(chatId, media, { sendAudioAsVoice: false });
   }
 
   async sendDocumentMessage(chatId: string, media: MediaInput): Promise<MessageResult> {
-    return this.sendMediaMessage(chatId, media);
+    return this.sendMediaMessage(chatId, media, { sendMediaAsDocument: true });
   }
 
-  private async sendMediaMessage(chatId: string, media: MediaInput): Promise<MessageResult> {
+  private async sendMediaMessage(
+    chatId: string,
+    media: MediaInput,
+    extraOptions?: Record<string, any>,
+  ): Promise<MessageResult> {
     this.ensureReady();
+    const targetChatId = this.formatChatId(chatId);
 
     let messageMedia: MessageMedia;
 
@@ -497,12 +526,19 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       messageMedia = new MessageMedia(media.mimetype, media.data.toString('base64'), media.filename);
     }
 
-    const msg = await this.client!.sendMessage(chatId, messageMedia, {
-      caption: media.caption,
-    });
+    let msg: any = null;
+    try {
+      msg = await this.client!.sendMessage(targetChatId, messageMedia, {
+        caption: media.caption,
+        ...extraOptions,
+      });
+    } catch (err: any) {
+      this.logger.error(`Error sending media message to ${targetChatId}: ${err?.message || err}`);
+      throw err;
+    }
 
     return {
-      id: msg?.id?._serialized || `media_${Date.now()}`,
+      id: msg?.id?._serialized || `media_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       timestamp: msg?.timestamp || Math.floor(Date.now() / 1000),
     };
   }

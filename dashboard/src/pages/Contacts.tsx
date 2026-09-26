@@ -773,8 +773,8 @@ export function Contacts() {
         });
 
         try {
-          const cleanPhone = contact.phone.replace(/\D/g, '');
-          const chatId = cleanPhone.endsWith('@c.us') ? cleanPhone : `${cleanPhone}@c.us`;
+          const phoneOnly = cleanPhoneNumber(contact.phone);
+          const chatId = `${phoneOnly}@c.us`;
           const personalizedMsg = blastMessage.trim().replace(/\{\{name\}\}/g, contact.name);
 
           if (attachmentPayload) {

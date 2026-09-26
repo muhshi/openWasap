@@ -328,7 +328,9 @@ export class ContactGroupController {
     void (async () => {
       for (let i = 0; i < members.length; i++) {
         const member = members[i];
-        const cleanPhone = member.phone.replace(/\D/g, '');
+        let cleanPhone = member.phone.replace(/\D/g, '');
+        while (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
+        if (cleanPhone.startsWith('8')) cleanPhone = '62' + cleanPhone;
         const chatId = cleanPhone.endsWith('@c.us') ? cleanPhone : `${cleanPhone}@c.us`;
 
         try {
