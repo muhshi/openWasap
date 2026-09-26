@@ -300,6 +300,10 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 
 ## 📝 Changelog
 
+### [2026-09-26]
+
+- **Pembaruan Footer & Atribusi Pengembang**: Mengubah atribusi footer aplikasi dan README menjadi "Developed by https://github.com/muhshi for BPS Kabupaten Demak" dengan tautan langsung ke GitHub pengembang.
+
 ### [2026-06-06] — Master API Key, Database Agnostic Columns & Group Member Blast
 
 - **Master API Key Support**: Menambahkan validasi `API_MASTER_KEY` dari environment variabel `.env` di `AuthService`. Jika kunci yang dikirimkan cocok dengan master key, user otomatis mendapatkan peran `ADMIN` dengan akses global.
@@ -382,6 +386,6 @@ See [LICENSE](./LICENSE) for details.
 
 <br/>
 
-<sub>Made with ❤️ by <a href="https://github.com/rmyndharis">Yudhi Armyndharis</a> and the OpenWA Community</sub>
+<sub>Developed by <a href="https://github.com/muhshi">https://github.com/muhshi</a> for BPS Kabupaten Demak</sub>
 
 </div>

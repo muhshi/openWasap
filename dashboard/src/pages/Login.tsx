@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Eye, EyeOff } from 'lucide-react';
 import { GithubIcon } from '../components/GithubIcon';
 import './Login.css';
@@ -152,9 +152,23 @@ export function Login({ onLogin }: LoginProps) {
       </div>
 
       <footer className="login-footer">
-        <span>{t('login.footer')}</span>
+        <span>
+          <Trans
+            i18nKey="login.footer"
+            components={{
+              link: (
+                <a
+                  href="https://github.com/muhshi"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ textDecoration: 'underline' }}
+                />
+              ),
+            }}
+          />
+        </span>
         <a
-          href="https://github.com/rmyndharis/OpenWA"
+          href="https://github.com/muhshi"
           target="_blank"
           rel="noopener noreferrer"
           className="github-link"
