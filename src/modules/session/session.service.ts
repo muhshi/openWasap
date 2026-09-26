@@ -378,6 +378,10 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
         }
       },
       onLoadingScreen: (percent: number, message: string): void => {
+        const engine = this.engines.get(id);
+        if (engine && engine.getStatus() === EngineStatus.READY) {
+          return;
+        }
         this.eventsGateway.emitSessionStatus(id, SessionStatus.AUTHENTICATING, {
           loadingPercent: percent,
           loadingMessage: message,

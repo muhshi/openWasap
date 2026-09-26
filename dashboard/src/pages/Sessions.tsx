@@ -41,8 +41,28 @@ export function Sessions() {
     onSessionStatus: useCallback(
       (event: { sessionId: string; status: string; loadingPercent?: number; loadingMessage?: string }) => {
         setSessions(prev =>
-          prev.map(s => (s.id === event.sessionId ? { ...s, status: event.status as Session['status'] } : s)),
+          prev.map(s => {
+            if (s.id === event.sessionId) {
+              // Never downgrade a ready session back to authenticating via late loading_screen event
+              if (s.status === 'ready' && event.status === 'authenticating') {
+                return s;
+              }
+              return { ...s, status: event.status as Session['status'] };
+            }
+            return s;
+          }),
         );
+        if (event.status === 'ready') {
+          setSyncProgress(prev => {
+            const next = { ...prev };
+            delete next[event.sessionId];
+            return next;
+          });
+          setQrData(prev => (prev?.sessionId === event.sessionId ? null : prev));
+          toast.success(t('sessions.toasts.readyTitle'), t('sessions.toasts.readyDesc'));
+          fetchSessions();
+          return;
+        }
         if (event.loadingPercent !== undefined || event.loadingMessage !== undefined) {
           setSyncProgress(prev => ({
             ...prev,
@@ -54,6 +74,10 @@ export function Sessions() {
         }
         setQrData(prev => {
           if (prev?.sessionId === event.sessionId) {
+            // Never downgrade a ready modal back to authenticating
+            if (prev.status === 'ready' && event.status === 'authenticating') {
+              return prev;
+            }
             return {
               ...prev,
               status: event.status,
@@ -63,11 +87,7 @@ export function Sessions() {
           }
           return prev;
         });
-        if (event.status === 'ready') {
-          setQrData(prev => (prev?.sessionId === event.sessionId ? null : prev));
-          toast.success(t('sessions.toasts.readyTitle'), t('sessions.toasts.readyDesc'));
-          fetchSessions();
-        } else if (event.status === 'disconnected') {
+        if (event.status === 'disconnected') {
           setQrData(prev => (prev?.sessionId === event.sessionId ? null : prev));
           toast.warning(t('sessions.toasts.disconnectedTitle'), t('sessions.toasts.disconnectedDesc'));
         }
@@ -114,6 +134,19 @@ export function Sessions() {
     fetchSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-poll status when any session is connecting or authenticating to prevent stuck state
+  useEffect(() => {
+    const hasPending = sessions.some(s =>
+      ['authenticating', 'connecting', 'initializing'].includes(s.status),
+    );
+    if (!hasPending) return;
+
+    const interval = setInterval(() => {
+      void fetchSessions();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [sessions]);
 
   const qrRefreshInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentSessionName = useRef<string>('');
@@ -460,7 +493,7 @@ export function Sessions() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <Loader2 size={12} className="animate-spin" style={{ color: '#22c55e' }} />
-                      <span style={{ color: '#f1f5f9' }}>Menyimpan sesi & download riwayat chat</span>
+                      <span style={{ color: '#f1f5f9' }}>Menyimpan sesi & sinkronisasi WhatsApp Web</span>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ opacity: 0.4 }}>○</span>
@@ -599,7 +632,7 @@ export function Sessions() {
                           : 'Sedang menyinkronkan WhatsApp...'}
                       </p>
                       <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                        Menyimpan sesi & mengunduh chat...
+                        Menyimpan sesi & sinkronisasi WhatsApp Web...
                       </span>
                     </div>
                   ) : (

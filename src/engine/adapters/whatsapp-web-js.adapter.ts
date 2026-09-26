@@ -58,6 +58,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   private pushName: string | null = null;
   private callbacks: EngineEventCallbacks = {};
   private authWatchdogTimer: NodeJS.Timeout | null = null;
+  private initTimestamp: number = Math.floor(Date.now() / 1000);
 
   constructor(private readonly config: WhatsAppWebJsConfig) {
     super();
@@ -67,6 +68,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
   async initialize(callbacks: EngineEventCallbacks): Promise<void> {
     this.callbacks = callbacks;
+    this.initTimestamp = Math.floor(Date.now() / 1000);
     this.setStatus(EngineStatus.INITIALIZING);
 
     try {
@@ -294,9 +296,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
     this.client.on('loading_screen', (percent: number, message: string) => {
       this.qrCode = null;
-      if (this.status !== EngineStatus.READY) {
-        this.setStatus(EngineStatus.AUTHENTICATING);
+      if (this.status === EngineStatus.READY) {
+        return; // Session is already ready, ignore late sync progress
       }
+      this.setStatus(EngineStatus.AUTHENTICATING);
       this.logger.log(`[Sync] WhatsApp sync progress: ${percent}% (${message}) for session: ${this.config.sessionId}`);
       this.callbacks.onLoadingScreen?.(percent, message);
     });
@@ -331,8 +334,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
           isGroup: msg.from.endsWith('@g.us'),
         };
 
-        // Handle media
-        if (msg.hasMedia) {
+        // Only download media for fresh messages received while session is running
+        // Skip historical backlog sync to save CPU, RAM and bandwidth
+        const isHistoricalMessage = msg.timestamp && msg.timestamp < (this.initTimestamp - 60);
+        if (msg.hasMedia && !isHistoricalMessage) {
           try {
             const media = await msg.downloadMedia();
             if (media) {
