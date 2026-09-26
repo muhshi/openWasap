@@ -34,6 +34,9 @@ export function Sessions() {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  const qrDataRef = useRef(qrData);
+  qrDataRef.current = qrData;
+
   useWebSocket({
     onSessionStatus: useCallback(
       (event: { sessionId: string; status: string; loadingPercent?: number; loadingMessage?: string }) => {
@@ -73,7 +76,14 @@ export function Sessions() {
     ),
     onQRCode: useCallback(
       (event: { sessionId: string; qrCode: string }) => {
+        // If already authenticating or ready, ignore incoming QR events
+        if (qrDataRef.current?.status === 'authenticating' || qrDataRef.current?.status === 'ready') {
+          return;
+        }
         setQrData(prev => {
+          if (prev?.status === 'authenticating' || prev?.status === 'ready') {
+            return prev;
+          }
           if (prev && prev.sessionId === event.sessionId) {
             return { ...prev, qrCode: event.qrCode, status: 'qr_ready' };
           }
@@ -109,6 +119,21 @@ export function Sessions() {
   const currentSessionName = useRef<string>('');
 
   const fetchQR = useCallback(async (sessionId: string) => {
+    // If modal is already showing authenticating, do not poll QR code; only check if session reaches ready
+    if (qrDataRef.current?.status === 'authenticating') {
+      try {
+        const session = await sessionApi.get(sessionId);
+        if (session?.status === 'ready') {
+          setQrData(null);
+          currentSessionName.current = '';
+          fetchSessions();
+        }
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
     try {
       const qr = await sessionApi.getQR(sessionId);
       if (qr?.status === 'ready') {
@@ -117,12 +142,24 @@ export function Sessions() {
         fetchSessions();
         return;
       }
+      if (qr?.status === 'authenticating') {
+        setQrData(prev => (prev ? { ...prev, status: 'authenticating' } : null));
+        return;
+      }
       if (qr?.qrCode) {
-        setQrData(prev => ({
-          sessionId,
-          sessionName: prev?.sessionName || currentSessionName.current,
-          qrCode: qr.qrCode,
-        }));
+        setQrData(prev => {
+          // If already authenticating or ready, do NOT revert back to QR code
+          if (prev?.status === 'authenticating' || prev?.status === 'ready') {
+            return prev;
+          }
+          return {
+            ...prev,
+            sessionId,
+            sessionName: prev?.sessionName || currentSessionName.current,
+            qrCode: qr.qrCode,
+            status: prev?.status || 'qr_ready',
+          };
+        });
       }
     } catch {
       // If getQR fails (e.g. session already authenticated or error), check session status directly
@@ -132,6 +169,8 @@ export function Sessions() {
           setQrData(null);
           currentSessionName.current = '';
           fetchSessions();
+        } else if (session?.status === 'authenticating') {
+          setQrData(prev => (prev ? { ...prev, status: 'authenticating' } : null));
         }
       } catch {
         // Keep modal open while QR is preparing

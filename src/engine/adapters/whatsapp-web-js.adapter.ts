@@ -293,6 +293,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     });
 
     this.client.on('loading_screen', (percent: number, message: string) => {
+      this.qrCode = null;
+      if (this.status !== EngineStatus.READY) {
+        this.setStatus(EngineStatus.AUTHENTICATING);
+      }
       this.logger.log(`[Sync] WhatsApp sync progress: ${percent}% (${message}) for session: ${this.config.sessionId}`);
       this.callbacks.onLoadingScreen?.(percent, message);
     });

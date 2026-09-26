@@ -351,6 +351,7 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 - **Hapus Seeder Data Hardcoded**: Hapus 54 data kontak default yang di-seed otomatis saat server pertama kali boot.
 - **Perbaikan Import**: Import kontak kini hanya menerima file Excel (.xlsx/.xls), tidak lagi CSV.
 ### [2026-09-26]
+- **Perbaikan Kedipan (Flicker) Antara Loading dan QR Code**: Menggunakan `qrDataRef` pada `Sessions.tsx` untuk mencegah proses polling QR dan event QR mendadak menimpa status sesi yang sedang `authenticating`, serta memastikan `this.qrCode = null` segera saat event `loading_screen` dipicu di `WhatsAppWebJsAdapter`.
 - **Perbaikan Modal QR Code & Transisi Sesi Ready**: Memperbaiki `fetchQR` di `Sessions.tsx` agar langsung menutup modal QR dan me-refresh daftar sesi saat polling mendeteksi session `ready`, serta menangani fallback pengecekan status saat getQR mengembalikan 400.
 - **Dukungan WebSocket di Vite Dev Server**: Menambahkan konfigurasi proxy `/socket.io` dengan `ws: true` di `dashboard/vite.config.ts` sehingga event real-time Socket.IO terhubung mulus ke backend NestJS pada port 2785 saat pengembangan lokal.
 - **Reduksi Noise Log Sinkronisasi WhatsApp**: Mengubah level log kegagalan unduh media dan quoted message histori pesan lama dari `error` menjadi `debug` di `WhatsAppWebJsAdapter` agar konsol tidak dibanjiri pesan error saat sinkronisasi chat.
