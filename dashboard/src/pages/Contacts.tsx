@@ -742,7 +742,8 @@ export function Contacts() {
         for (let i = 0; i < targets.length; i++) {
           const contact = targets[i];
           try {
-            const chatId = `${contact.phone}@c.us`;
+            const cleanPhone = contact.phone.replace(/\D/g, '');
+            const chatId = cleanPhone.endsWith('@c.us') ? cleanPhone : `${cleanPhone}@c.us`;
             const personalizedMsg = blastMessage.trim().replace(/\{\{name\}\}/g, contact.name);
 
             if (attachmentPayload) {
@@ -764,7 +765,10 @@ export function Contacts() {
               await messageApi.sendText(selectedSession, chatId, personalizedMsg);
             }
             sent++;
-          } catch { failed++; }
+          } catch (err) {
+            console.error(`[Blast] Gagal kirim ke ${contact.name} (${contact.phone}):`, err);
+            failed++;
+          }
           setBlastProgress({ done: i + 1, total: targets.length });
           if (i < targets.length - 1) await new Promise(r => setTimeout(r, blastDelay));
         }

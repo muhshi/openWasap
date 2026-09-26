@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty, ApiPropertyOptional, ApiSecurity } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsObject, Matches, IsBoolean } from 'class-validator';
@@ -158,6 +159,8 @@ export class BpsImportDto {
 @ApiSecurity('X-API-Key')
 @Controller('contact-groups')
 export class ContactGroupController {
+  private readonly logger = new Logger(ContactGroupController.name);
+
   constructor(
     private readonly contactGroupService: ContactGroupService,
     private readonly sessionService: SessionService,
@@ -319,13 +322,20 @@ export class ContactGroupController {
     const delayMs = dto.delayMs ?? 3000;
     const results: Array<{ phone: string; name: string; status: 'sent' | 'failed'; error?: string }> = [];
 
+    this.logger.log(`[Blast] Initiating blast for group ${id} to ${members.length} members (Session: ${dto.sessionId}, Attachment: ${!!dto.attachment})`);
+
     // Kirim pesan secara asinkron (non-blocking)
     void (async () => {
-      for (const member of members) {
+      for (let i = 0; i < members.length; i++) {
+        const member = members[i];
+        const cleanPhone = member.phone.replace(/\D/g, '');
+        const chatId = cleanPhone.endsWith('@c.us') ? cleanPhone : `${cleanPhone}@c.us`;
+
         try {
-          const chatId = `${member.phone}@c.us`;
           // Ganti {{name}} dengan nama penerima
           const personalizedMessage = (dto.message || '').replace(/\{\{name\}\}/g, member.name);
+
+          this.logger.log(`[Blast ${i + 1}/${members.length}] Sending to ${member.name} (${chatId})...`);
 
           if (dto.attachment && (dto.attachment.url || dto.attachment.base64)) {
             const mediaInput: MediaInput = {
@@ -349,18 +359,28 @@ export class ContactGroupController {
             await engine.sendTextMessage(chatId, personalizedMessage);
           }
 
+          this.logger.log(`[Blast ${i + 1}/${members.length}] Sent successfully to ${member.name} (${chatId})`);
           results.push({ phone: member.phone, name: member.name, status: 'sent' });
         } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          this.logger.error(`[Blast ${i + 1}/${members.length}] FAILED sending to ${member.name} (${chatId}): ${errMsg}`);
           results.push({
             phone: member.phone,
             name: member.name,
             status: 'failed',
-            error: err instanceof Error ? err.message : 'Unknown error',
+            error: errMsg,
           });
         }
+
         // Delay antar pesan
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        if (i < members.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
       }
+
+      const totalSent = results.filter(r => r.status === 'sent').length;
+      const totalFailed = results.filter(r => r.status === 'failed').length;
+      this.logger.log(`[Blast] Completed blast for group ${id}. Total: ${members.length}, Sent: ${totalSent}, Failed: ${totalFailed}`);
     })();
 
     return {

@@ -486,10 +486,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     if (typeof media.data === 'string') {
       if (media.data.startsWith('http://') || media.data.startsWith('https://')) {
         // URL
-        messageMedia = await MessageMedia.fromUrl(media.data);
+        messageMedia = await MessageMedia.fromUrl(media.data, { unsafeMime: true });
       } else {
         // Base64
-        const cleanBase64 = media.data.includes('base64,') ? media.data.split('base64,')[1] : media.data;
+        const cleanBase64 = (media.data.includes('base64,') ? media.data.split('base64,')[1] : media.data).trim();
         messageMedia = new MessageMedia(media.mimetype, cleanBase64, media.filename);
       }
     } else {
@@ -502,8 +502,8 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     });
 
     return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
+      id: msg?.id?._serialized || `media_${Date.now()}`,
+      timestamp: msg?.timestamp || Math.floor(Date.now() / 1000),
     };
   }
 
