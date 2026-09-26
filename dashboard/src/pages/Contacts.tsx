@@ -113,7 +113,13 @@ export function Contacts() {
   const [blastMessage, setBlastMessage] = useState('');
   const [blastDelay, setBlastDelay] = useState(3000);
   const [isBlasting, setIsBlasting] = useState(false);
-  const [blastProgress, setBlastProgress] = useState<{ done: number; total: number } | null>(null);
+  const [blastProgress, setBlastProgress] = useState<{
+    done: number;
+    total: number;
+    currentName?: string;
+    sent: number;
+    failed: number;
+  } | null>(null);
 
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
 
@@ -717,66 +723,113 @@ export function Contacts() {
     setBlastProgress(null);
 
     try {
+      let targets: Array<{ id: string; name: string; phone: string }> = [];
+
       if (blastMode === 'group') {
-        // Backend handles group blast
         if (!blastGroupId) { toast.error('Pilih group terlebih dahulu.'); return; }
-        const memberIdsToBlast = selectedGroupMemberIds.length > 0 ? selectedGroupMemberIds : undefined;
-        const result = await contactGroupApi.blast(
-          blastGroupId,
-          selectedSession,
-          blastMessage.trim(),
-          blastDelay,
-          memberIdsToBlast,
-          attachmentPayload,
-        );
-        toast.success(result.message);
+        const groupDetail = await contactGroupApi.get(blastGroupId);
+        if (!groupDetail || !groupDetail.members || groupDetail.members.length === 0) {
+          toast.error('Group tidak memiliki anggota. Tambahkan kontak terlebih dahulu.');
+          return;
+        }
+
+        let members = groupDetail.members;
         if (selectedGroupMemberIds.length > 0) {
-          setSelectedGroupMemberIds([]);
+          members = members.filter(m => selectedGroupMemberIds.includes(m.id));
         }
+
+        targets = members
+          .filter(m => m.phone)
+          .map(m => ({ id: m.id, name: m.name, phone: m.phone }));
       } else {
-        // Frontend loop for selected contacts
-        const targets = importedContacts.filter(c => selectedContactIds.includes(c.id));
-        if (targets.length === 0) { toast.error('Tidak ada kontak yang dipilih.'); return; }
-        let sent = 0; let failed = 0;
-        setBlastProgress({ done: 0, total: targets.length });
-        for (let i = 0; i < targets.length; i++) {
-          const contact = targets[i];
-          try {
-            const cleanPhone = contact.phone.replace(/\D/g, '');
-            const chatId = cleanPhone.endsWith('@c.us') ? cleanPhone : `${cleanPhone}@c.us`;
-            const personalizedMsg = blastMessage.trim().replace(/\{\{name\}\}/g, contact.name);
-
-            if (attachmentPayload) {
-              const mime = (attachmentPayload.mimetype || '').toLowerCase();
-              let endpoint: 'send-image' | 'send-video' | 'send-audio' | 'send-document' = 'send-document';
-              if (mime.startsWith('image/')) endpoint = 'send-image';
-              else if (mime.startsWith('video/')) endpoint = 'send-video';
-              else if (mime.startsWith('audio/')) endpoint = 'send-audio';
-
-              await messageApi.sendMedia(selectedSession, endpoint, {
-                chatId,
-                url: attachmentPayload.url,
-                base64: attachmentPayload.base64,
-                mimetype: attachmentPayload.mimetype,
-                filename: attachmentPayload.filename,
-                caption: personalizedMsg || undefined,
-              });
-            } else {
-              await messageApi.sendText(selectedSession, chatId, personalizedMsg);
-            }
-            sent++;
-          } catch (err) {
-            console.error(`[Blast] Gagal kirim ke ${contact.name} (${contact.phone}):`, err);
-            failed++;
-          }
-          setBlastProgress({ done: i + 1, total: targets.length });
-          if (i < targets.length - 1) await new Promise(r => setTimeout(r, blastDelay));
-        }
-        toast.success(`Blast selesai: ${sent} berhasil${failed > 0 ? `, ${failed} gagal` : ''}.`);
+        const selected = importedContacts.filter(c => selectedContactIds.includes(c.id));
+        targets = selected.map(c => ({ id: c.id, name: c.name, phone: c.phone }));
       }
+
+      if (targets.length === 0) {
+        toast.error('Tidak ada kontak tujuan yang dipilih atau nomor telepon kosong.');
+        return;
+      }
+
+      let sent = 0;
+      let failed = 0;
+
+      setBlastProgress({
+        done: 0,
+        total: targets.length,
+        currentName: targets[0].name,
+        sent: 0,
+        failed: 0,
+      });
+
+      for (let i = 0; i < targets.length; i++) {
+        const contact = targets[i];
+        setBlastProgress({
+          done: i,
+          total: targets.length,
+          currentName: contact.name,
+          sent,
+          failed,
+        });
+
+        try {
+          const cleanPhone = contact.phone.replace(/\D/g, '');
+          const chatId = cleanPhone.endsWith('@c.us') ? cleanPhone : `${cleanPhone}@c.us`;
+          const personalizedMsg = blastMessage.trim().replace(/\{\{name\}\}/g, contact.name);
+
+          if (attachmentPayload) {
+            const mime = (attachmentPayload.mimetype || '').toLowerCase();
+            let endpoint: 'send-image' | 'send-video' | 'send-audio' | 'send-document' = 'send-document';
+            if (mime.startsWith('image/')) endpoint = 'send-image';
+            else if (mime.startsWith('video/')) endpoint = 'send-video';
+            else if (mime.startsWith('audio/')) endpoint = 'send-audio';
+
+            await messageApi.sendMedia(selectedSession, endpoint, {
+              chatId,
+              url: attachmentPayload.url,
+              base64: attachmentPayload.base64,
+              mimetype: attachmentPayload.mimetype,
+              filename: attachmentPayload.filename,
+              caption: personalizedMsg || undefined,
+            });
+          } else {
+            await messageApi.sendText(selectedSession, chatId, personalizedMsg);
+          }
+          sent++;
+        } catch (err) {
+          console.error(`[Blast] Gagal kirim ke ${contact.name} (${contact.phone}):`, err);
+          failed++;
+        }
+
+        setBlastProgress({
+          done: i + 1,
+          total: targets.length,
+          currentName: i < targets.length - 1 ? targets[i + 1].name : undefined,
+          sent,
+          failed,
+        });
+
+        if (i < targets.length - 1) {
+          await new Promise(r => setTimeout(r, blastDelay));
+        }
+      }
+
+      // Notifikasi feedback lengkap
+      if (failed === 0) {
+        toast.success(`🎉 Blast selesai! Seluruh ${sent} pesan berhasil terkirim.`);
+      } else {
+        toast.error(`⚠️ Blast selesai: ${sent} berhasil, ${failed} gagal dari total ${targets.length} penerima.`);
+      }
+
+      // Jeda 1.2 detik agar pengguna melihat progres 100% sebelum modal ditutup
+      await new Promise(r => setTimeout(r, 1200));
+
       setIsBlastOpen(false);
       setBlastMessage('');
       clearBlastAttachment();
+      if (selectedGroupMemberIds.length > 0) {
+        setSelectedGroupMemberIds([]);
+      }
     } catch (err) {
       toast.error(`Gagal mengirim blast: ${err instanceof Error ? err.message : ''}`);
     } finally {
@@ -1849,15 +1902,50 @@ export function Contacts() {
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>Rekomendasi: 3000ms. Jeda terlalu pendek berisiko akun WA dibatasi.</p>
               </div>
 
-              {/* Progress bar */}
+              {/* Progress bar with live detailed feedback */}
               {blastProgress && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)', marginBottom: '0.35rem' }}>
-                    <span>Mengirim...</span>
-                    <span>{blastProgress.done}/{blastProgress.total}</span>
+                <div style={{
+                  marginBottom: '1.25rem',
+                  padding: '1rem',
+                  borderRadius: 8,
+                  background: 'var(--bg-body, #f8fafc)',
+                  border: '1px solid var(--border-color, #e2e8f0)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {blastProgress.done < blastProgress.total
+                        ? `Sedang mengirim ke: ${blastProgress.currentName || 'Penerima'}...`
+                        : 'Selesai memproses seluruh pesan!'}
+                    </span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#16a34a' }}>
+                      {blastProgress.done} / {blastProgress.total}
+                    </span>
                   </div>
-                  <div style={{ height: 6, background: 'var(--bg-body,#f1f5f9)', borderRadius: 9999 }}>
-                    <div style={{ height: '100%', background: '#16a34a', borderRadius: 9999, width: `${(blastProgress.done / blastProgress.total) * 100}%`, transition: 'width 0.3s' }} />
+
+                  <div style={{ height: 8, background: '#e2e8f0', borderRadius: 9999, overflow: 'hidden', marginBottom: '0.75rem' }}>
+                    <div
+                      style={{
+                        height: '100%',
+                        background: 'linear-gradient(90deg, #2563eb, #16a34a)',
+                        borderRadius: 9999,
+                        width: `${(blastProgress.done / blastProgress.total) * 100}%`,
+                        transition: 'width 0.3s ease',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.78rem' }}>
+                    <span style={{ padding: '0.2rem 0.5rem', background: 'rgba(22, 163, 74, 0.1)', color: '#16a34a', borderRadius: 4, fontWeight: 600 }}>
+                      ✅ Berhasil: {blastProgress.sent}
+                    </span>
+                    {blastProgress.failed > 0 && (
+                      <span style={{ padding: '0.2rem 0.5rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: 4, fontWeight: 600 }}>
+                        ❌ Gagal: {blastProgress.failed}
+                      </span>
+                    )}
+                    <span style={{ padding: '0.2rem 0.5rem', background: 'rgba(100, 116, 139, 0.1)', color: 'var(--text-secondary)', borderRadius: 4, marginLeft: 'auto' }}>
+                      Jeda: {blastDelay}ms
+                    </span>
                   </div>
                 </div>
               )}
