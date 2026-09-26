@@ -350,6 +350,11 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 - **Fitur Blast WA Personal**: Kirim pesan WhatsApp 1-1 (personal/private) ke semua anggota group sekaligus melalui sesi WA aktif. Mendukung variabel `{{name}}` untuk personalisasi nama penerima dan konfigurasi jeda antar pesan (default 3 detik).
 - **Hapus Seeder Data Hardcoded**: Hapus 54 data kontak default yang di-seed otomatis saat server pertama kali boot.
 - **Perbaikan Import**: Import kontak kini hanya menerima file Excel (.xlsx/.xls), tidak lagi CSV.
+### [2026-09-26]
+- **Perbaikan Modal QR Code & Transisi Sesi Ready**: Memperbaiki `fetchQR` di `Sessions.tsx` agar langsung menutup modal QR dan me-refresh daftar sesi saat polling mendeteksi session `ready`, serta menangani fallback pengecekan status saat getQR mengembalikan 400.
+- **Dukungan WebSocket di Vite Dev Server**: Menambahkan konfigurasi proxy `/socket.io` dengan `ws: true` di `dashboard/vite.config.ts` sehingga event real-time Socket.IO terhubung mulus ke backend NestJS pada port 2785 saat pengembangan lokal.
+- **Reduksi Noise Log Sinkronisasi WhatsApp**: Mengubah level log kegagalan unduh media dan quoted message histori pesan lama dari `error` menjadi `debug` di `WhatsAppWebJsAdapter` agar konsol tidak dibanjiri pesan error saat sinkronisasi chat.
+- **Perbaikan Shutdown Hook TypeORM**: Menambahkan properti identifier koneksi `name: 'main'` dan `name: 'data'` pada objek hasil `useFactory` TypeOrmModule di `app.module.ts` untuk mencegah error `Nest could not find DataSource element` saat aplikasi shutdown.
 
 ### [2026-09-25]
 - **Indikator Progres Sinkronisasi & Penjelasan Loading Real-time**: Menambahkan event `onLoadingScreen` dari engine WhatsApp Web ke WebSocket (`session.status`) dengan payload `loadingPercent` & `loadingMessage`, serta memperbarui modal QR dan kartu sesi di dashboard agar menampilkan progress bar visual, tahapan proses (verifikasi QR -> unduh chat -> aktivasi koneksi), dan pesan status yang informatif sehingga pengguna memahami alur kerja sinkronisasi.

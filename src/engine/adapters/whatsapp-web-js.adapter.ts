@@ -339,7 +339,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
               };
             }
           } catch (error) {
-            this.logger.error('Error downloading media', String(error));
+            this.logger.debug(`Error downloading media for msg ${msg.id?._serialized}: ${String(error)}`);
           }
         }
 
@@ -352,7 +352,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
               body: quoted.body,
             };
           } catch (error) {
-            this.logger.error('Error getting quoted message', String(error));
+            this.logger.debug(`Error getting quoted message for msg ${msg.id?._serialized}: ${String(error)}`);
           }
         }
 

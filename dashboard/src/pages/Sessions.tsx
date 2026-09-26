@@ -111,6 +111,12 @@ export function Sessions() {
   const fetchQR = useCallback(async (sessionId: string) => {
     try {
       const qr = await sessionApi.getQR(sessionId);
+      if (qr?.status === 'ready') {
+        setQrData(null);
+        currentSessionName.current = '';
+        fetchSessions();
+        return;
+      }
       if (qr?.qrCode) {
         setQrData(prev => ({
           sessionId,
@@ -118,13 +124,18 @@ export function Sessions() {
           qrCode: qr.qrCode,
         }));
       }
-      if (qr.status === 'ready') {
-        setQrData(null);
-        currentSessionName.current = '';
-        fetchSessions();
-      }
     } catch {
-      // Keep modal open while QR is preparing
+      // If getQR fails (e.g. session already authenticated or error), check session status directly
+      try {
+        const session = await sessionApi.get(sessionId);
+        if (session?.status === 'ready') {
+          setQrData(null);
+          currentSessionName.current = '';
+          fetchSessions();
+        }
+      } catch {
+        // Keep modal open while QR is preparing
+      }
     }
   }, []);
 
