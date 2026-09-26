@@ -18,10 +18,14 @@ import {
   ArrowLeft,
   Globe,
   Lock,
+  Paperclip,
+  FileText,
+  Image as ImageIcon,
+  Link as LinkIcon,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { importedContactApi, contactGroupApi, messageApi } from '../services/api';
-import type { ImportedContact, ContactGroup, ContactGroupDetail } from '../services/api';
+import type { ImportedContact, ContactGroup, ContactGroupDetail, BlastAttachmentPayload } from '../services/api';
 import { useSessionsQuery } from '../hooks/queries';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useRole } from '../hooks/useRole';
@@ -112,6 +116,59 @@ export function Contacts() {
   const [blastProgress, setBlastProgress] = useState<{ done: number; total: number } | null>(null);
 
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
+
+  // Blast WA Media Attachment
+  const [attachmentMode, setAttachmentMode] = useState<'file' | 'url'>('file');
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentBase64, setAttachmentBase64] = useState<string | null>(null);
+  const [attachmentMime, setAttachmentMime] = useState<string | null>(null);
+  const [attachmentFilename, setAttachmentFilename] = useState<string | null>(null);
+  const [attachmentFileSize, setAttachmentFileSize] = useState<string | null>(null);
+  const [attachmentUrl, setAttachmentUrl] = useState('');
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
+  const blastFileInputRef = useRef<HTMLInputElement>(null);
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleBlastFileSelect = (file: File) => {
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error('Ukuran file maksimal 25 MB.');
+      return;
+    }
+    setAttachmentFile(file);
+    setAttachmentFilename(file.name);
+    setAttachmentMime(file.type || 'application/octet-stream');
+    setAttachmentFileSize(formatFileSize(file.size));
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = reader.result as string;
+      setAttachmentBase64(b64);
+      if (file.type.startsWith('image/')) {
+        setAttachmentPreviewUrl(b64);
+      } else {
+        setAttachmentPreviewUrl(null);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearBlastAttachment = () => {
+    setAttachmentFile(null);
+    setAttachmentBase64(null);
+    setAttachmentMime(null);
+    setAttachmentFilename(null);
+    setAttachmentFileSize(null);
+    setAttachmentUrl('');
+    setAttachmentPreviewUrl(null);
+    if (blastFileInputRef.current) {
+      blastFileInputRef.current.value = '';
+    }
+  };
 
   // Add-to-group picker modal
   const [isAddToGroupOpen, setIsAddToGroupOpen] = useState(false);
@@ -627,12 +684,35 @@ export function Contacts() {
     setBlastGroupId(groupId ?? (groups[0]?.id ?? ''));
     setBlastMessage('');
     setBlastProgress(null);
+    clearBlastAttachment();
+    setAttachmentMode('file');
     setIsBlastOpen(true);
   };
 
   const handleBlast = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSession || !blastMessage.trim()) return;
+    if (!selectedSession) return;
+
+    let attachmentPayload: BlastAttachmentPayload | undefined = undefined;
+    if (attachmentMode === 'file' && attachmentBase64) {
+      attachmentPayload = {
+        base64: attachmentBase64,
+        mimetype: attachmentMime || undefined,
+        filename: attachmentFilename || undefined,
+      };
+    } else if (attachmentMode === 'url' && attachmentUrl.trim()) {
+      attachmentPayload = {
+        url: attachmentUrl.trim(),
+        filename: attachmentUrl.split('/').pop()?.split('?')[0] || 'media-file',
+        mimetype: attachmentMime || undefined,
+      };
+    }
+
+    if (!blastMessage.trim() && !attachmentPayload) {
+      toast.error('Pesan teks atau lampiran media harus diisi.');
+      return;
+    }
+
     setIsBlasting(true);
     setBlastProgress(null);
 
@@ -641,7 +721,14 @@ export function Contacts() {
         // Backend handles group blast
         if (!blastGroupId) { toast.error('Pilih group terlebih dahulu.'); return; }
         const memberIdsToBlast = selectedGroupMemberIds.length > 0 ? selectedGroupMemberIds : undefined;
-        const result = await contactGroupApi.blast(blastGroupId, selectedSession, blastMessage.trim(), blastDelay, memberIdsToBlast);
+        const result = await contactGroupApi.blast(
+          blastGroupId,
+          selectedSession,
+          blastMessage.trim(),
+          blastDelay,
+          memberIdsToBlast,
+          attachmentPayload,
+        );
         toast.success(result.message);
         if (selectedGroupMemberIds.length > 0) {
           setSelectedGroupMemberIds([]);
@@ -656,8 +743,26 @@ export function Contacts() {
           const contact = targets[i];
           try {
             const chatId = `${contact.phone}@c.us`;
-            const msg = blastMessage.trim().replace(/\{\{name\}\}/g, contact.name);
-            await messageApi.sendText(selectedSession, chatId, msg);
+            const personalizedMsg = blastMessage.trim().replace(/\{\{name\}\}/g, contact.name);
+
+            if (attachmentPayload) {
+              const mime = (attachmentPayload.mimetype || '').toLowerCase();
+              let endpoint: 'send-image' | 'send-video' | 'send-audio' | 'send-document' = 'send-document';
+              if (mime.startsWith('image/')) endpoint = 'send-image';
+              else if (mime.startsWith('video/')) endpoint = 'send-video';
+              else if (mime.startsWith('audio/')) endpoint = 'send-audio';
+
+              await messageApi.sendMedia(selectedSession, endpoint, {
+                chatId,
+                url: attachmentPayload.url,
+                base64: attachmentPayload.base64,
+                mimetype: attachmentPayload.mimetype,
+                filename: attachmentPayload.filename,
+                caption: personalizedMsg || undefined,
+              });
+            } else {
+              await messageApi.sendText(selectedSession, chatId, personalizedMsg);
+            }
             sent++;
           } catch { failed++; }
           setBlastProgress({ done: i + 1, total: targets.length });
@@ -665,7 +770,9 @@ export function Contacts() {
         }
         toast.success(`Blast selesai: ${sent} berhasil${failed > 0 ? `, ${failed} gagal` : ''}.`);
       }
-      setIsBlastOpen(false); setBlastMessage('');
+      setIsBlastOpen(false);
+      setBlastMessage('');
+      clearBlastAttachment();
     } catch (err) {
       toast.error(`Gagal mengirim blast: ${err instanceof Error ? err.message : ''}`);
     } finally {
@@ -1567,20 +1674,159 @@ export function Contacts() {
             )}
 
             <form onSubmit={handleBlast}>
+              {/* Media Attachment Card */}
+              <div className="blast-attachment-container">
+                <div className="blast-attachment-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Paperclip size={14} />
+                    <span>Lampiran Media (Opsional)</span>
+                  </div>
+                  <div className="blast-attachment-tabs">
+                    <button
+                      type="button"
+                      className={`blast-attachment-tab-btn ${attachmentMode === 'file' ? 'active' : ''}`}
+                      onClick={() => setAttachmentMode('file')}
+                      disabled={isBlasting}
+                    >
+                      <Upload size={12} />
+                      <span>Upload File</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`blast-attachment-tab-btn ${attachmentMode === 'url' ? 'active' : ''}`}
+                      onClick={() => setAttachmentMode('url')}
+                      disabled={isBlasting}
+                    >
+                      <LinkIcon size={12} />
+                      <span>Media URL</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="blast-attachment-body">
+                  {attachmentMode === 'file' ? (
+                    attachmentFile ? (
+                      <div className="blast-attachment-preview">
+                        {attachmentPreviewUrl ? (
+                          <img src={attachmentPreviewUrl} alt="Preview" className="blast-attachment-thumb" />
+                        ) : (
+                          <div className="blast-attachment-icon-box">
+                            <FileText size={20} />
+                          </div>
+                        )}
+                        <div className="blast-attachment-info">
+                          <div className="blast-attachment-filename" title={attachmentFilename ?? ''}>
+                            {attachmentFilename}
+                          </div>
+                          <div className="blast-attachment-size">
+                            {attachmentFileSize} &bull; {attachmentMime}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="blast-attachment-remove-btn"
+                          onClick={clearBlastAttachment}
+                          disabled={isBlasting}
+                          title="Hapus file"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <input
+                          ref={blastFileInputRef}
+                          type="file"
+                          id="blast-file-input"
+                          style={{ display: 'none' }}
+                          disabled={isBlasting}
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleBlastFileSelect(file);
+                          }}
+                        />
+                        <div
+                          className="blast-attachment-dropzone"
+                          onClick={() => blastFileInputRef.current?.click()}
+                          onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                          onDrop={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const file = e.dataTransfer.files?.[0];
+                            if (file) handleBlastFileSelect(file);
+                          }}
+                        >
+                          <ImageIcon size={22} color="var(--primary-color, #2563eb)" />
+                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            Klik untuk pilih file atau drag & drop ke sini
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary,#64748b)' }}>
+                            Gambar (JPG, PNG), Dokumen (PDF, XLSX, DOCX), Video, Audio (Maks. 25MB)
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <input
+                          type="url"
+                          placeholder="https://example.com/gambar.jpg atau dokumen.pdf"
+                          value={attachmentUrl}
+                          onChange={e => setAttachmentUrl(e.target.value)}
+                          disabled={isBlasting}
+                          style={{
+                            flex: 1,
+                            padding: '0.5rem 0.65rem',
+                            borderRadius: 6,
+                            border: '1px solid var(--border-color,#cbd5e1)',
+                            background: 'var(--bg-card,#fff)',
+                            color: 'var(--text-primary)',
+                            fontSize: '0.85rem',
+                            outline: 'none',
+                          }}
+                        />
+                        {attachmentUrl && (
+                          <button
+                            type="button"
+                            className="blast-attachment-remove-btn"
+                            onClick={() => setAttachmentUrl('')}
+                            disabled={isBlasting}
+                            title="Hapus URL"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>
+                        Masukkan direct URL file media publik yang dapat diakses langsung.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="form-group">
-                <label htmlFor="blast-msg">Pesan</label>
+                <label htmlFor="blast-msg">
+                  Pesan {attachmentFile || attachmentUrl.trim() ? '(akan jadi Caption media)' : ''}
+                  {(!attachmentFile && !attachmentUrl.trim()) && <span style={{ color: '#ef4444' }}> *</span>}
+                </label>
                 <textarea
                   id="blast-msg"
-                  required
+                  required={!attachmentFile && !attachmentUrl.trim()}
                   disabled={isBlasting}
                   value={blastMessage}
                   onChange={e => setBlastMessage(e.target.value)}
-                  placeholder="Halo {{name}}, ini pengumuman penting dari kami."
-                  rows={5}
+                  placeholder={
+                    attachmentFile || attachmentUrl.trim()
+                      ? "Caption media (opsional). Gunakan {{name}} untuk nama penerima..."
+                      : "Halo {{name}}, ini pengumuman penting dari kami."
+                  }
+                  rows={4}
                   style={{ width: '100%', padding: '0.625rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary,#1e293b)', fontSize: '0.95rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
                 />
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>
-                  Gunakan <code style={{ background: 'rgba(0,0,0,0.06)', padding: '0 0.3rem', borderRadius: 3 }}>{'{{name}}'}</code> untuk menyisipkan nama penerima.
+                  Gunakan <code style={{ background: 'rgba(0,0,0,0.06)', padding: '0 0.3rem', borderRadius: 3 }}>{'{{name}}'}</code> untuk menyisipkan nama penerima secara otomatis.
                 </p>
               </div>
               <div className="form-group">
@@ -1617,7 +1863,7 @@ export function Contacts() {
                 <button
                   type="submit"
                   className="btn-submit"
-                  disabled={isBlasting || !blastMessage.trim() || !selectedSession}
+                  disabled={isBlasting || (!blastMessage.trim() && !attachmentFile && !attachmentUrl.trim()) || !selectedSession}
                   style={{ background: isBlasting ? undefined : '#16a34a' }}
                 >
                   {isBlasting ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}

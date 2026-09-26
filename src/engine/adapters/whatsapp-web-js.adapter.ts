@@ -489,7 +489,8 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         messageMedia = await MessageMedia.fromUrl(media.data);
       } else {
         // Base64
-        messageMedia = new MessageMedia(media.mimetype, media.data, media.filename);
+        const cleanBase64 = media.data.includes('base64,') ? media.data.split('base64,')[1] : media.data;
+        messageMedia = new MessageMedia(media.mimetype, cleanBase64, media.filename);
       }
     } else {
       // Buffer
@@ -609,7 +610,8 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       if (media.data.startsWith('http://') || media.data.startsWith('https://')) {
         messageMedia = await MessageMedia.fromUrl(media.data);
       } else {
-        messageMedia = new MessageMedia(media.mimetype, media.data, media.filename);
+        const cleanBase64 = media.data.includes('base64,') ? media.data.split('base64,')[1] : media.data;
+        messageMedia = new MessageMedia(media.mimetype, cleanBase64, media.filename);
       }
     } else {
       messageMedia = new MessageMedia(media.mimetype, media.data.toString('base64'), media.filename);

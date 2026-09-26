@@ -68,6 +68,13 @@ export interface BlastResult {
   message: string;
 }
 
+export interface BlastAttachmentPayload {
+  url?: string;
+  base64?: string;
+  mimetype?: string;
+  filename?: string;
+}
+
 export interface SessionStats {
   total: number;
   active: number;
@@ -304,10 +311,17 @@ export const contactGroupApi = {
     }),
   removeMember: (id: string, memberId: string) =>
     request<void>(`/contact-groups/${id}/members/${memberId}`, { method: 'DELETE' }),
-  blast: (id: string, sessionId: string, message: string, delayMs?: number, memberIds?: string[]) =>
+  blast: (
+    id: string,
+    sessionId: string,
+    message: string,
+    delayMs?: number,
+    memberIds?: string[],
+    attachment?: BlastAttachmentPayload,
+  ) =>
     request<BlastResult>(`/contact-groups/${id}/blast`, {
       method: 'POST',
-      body: JSON.stringify({ sessionId, message, delayMs, memberIds }),
+      body: JSON.stringify({ sessionId, message, delayMs, memberIds, attachment }),
     }),
 };
 
@@ -389,6 +403,22 @@ export const messageApi = {
     request<MessageResponse>(`/sessions/${sessionId}/messages/send-text`, {
       method: 'POST',
       body: JSON.stringify({ chatId, text }),
+    }),
+  sendMedia: (
+    sessionId: string,
+    endpoint: 'send-image' | 'send-video' | 'send-audio' | 'send-document',
+    data: {
+      chatId: string;
+      url?: string;
+      base64?: string;
+      mimetype?: string;
+      filename?: string;
+      caption?: string;
+    },
+  ) =>
+    request<MessageResponse>(`/sessions/${sessionId}/messages/${endpoint}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
   sendImage: (sessionId: string, chatId: string, url: string, caption?: string) =>
     request<MessageResponse>(`/sessions/${sessionId}/messages/send-image`, {

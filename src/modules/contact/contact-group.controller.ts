@@ -10,13 +10,14 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty, ApiSecurity } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty, ApiPropertyOptional, ApiSecurity } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsObject, Matches, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContactGroupService } from './contact-group.service';
 import { SessionService } from '../session/session.service';
 import { CurrentApiKey } from '../auth/decorators/auth.decorators';
 import { ApiKey } from '../auth/entities/api-key.entity';
+import { MediaInput } from '../../engine/interfaces/whatsapp-engine.interface';
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
@@ -65,16 +66,38 @@ class AddMembersDto {
   contactIds: string[];
 }
 
+export class BlastAttachmentDto {
+  @ApiPropertyOptional({ description: 'URL media (http/https)' })
+  @IsOptional()
+  @IsString()
+  url?: string;
+
+  @ApiPropertyOptional({ description: 'Base64 encoded media data' })
+  @IsOptional()
+  @IsString()
+  base64?: string;
+
+  @ApiPropertyOptional({ description: 'Media MIME type (misal: image/jpeg, application/pdf)' })
+  @IsOptional()
+  @IsString()
+  mimetype?: string;
+
+  @ApiPropertyOptional({ description: 'Nama file media (misal: brosur.pdf)' })
+  @IsOptional()
+  @IsString()
+  filename?: string;
+}
+
 class BlastMessageDto {
   @ApiProperty({ description: 'Session ID WhatsApp yang aktif', example: 'default' })
   @IsString()
   @IsNotEmpty()
   sessionId: string;
 
-  @ApiProperty({ description: 'Pesan yang akan dikirim. Gunakan {{name}} untuk nama penerima', example: 'Halo {{name}}, ini adalah pengumuman penting.' })
+  @ApiPropertyOptional({ description: 'Pesan yang akan dikirim / caption media. Gunakan {{name}} untuk nama penerima', example: 'Halo {{name}}, ini adalah pengumuman penting.' })
   @IsString()
-  @IsNotEmpty()
-  message: string;
+  @IsOptional()
+  message?: string;
 
   @ApiProperty({ description: 'Delay antar pesan dalam ms (default: 3000)', required: false, example: 3000 })
   @IsOptional()
@@ -84,6 +107,12 @@ class BlastMessageDto {
   @IsArray()
   @IsOptional()
   memberIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Attachment media (opsional)', type: BlastAttachmentDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BlastAttachmentDto)
+  attachment?: BlastAttachmentDto;
 }
 
 export class ContactWithMetadataDto {
@@ -276,6 +305,11 @@ export class ContactGroupController {
       throw new BadRequestException(`Sesi "${dto.sessionId}" tidak ditemukan atau belum READY. Pastikan sesi WhatsApp sudah terhubung.`);
     }
 
+    // Pastikan ada pesan atau attachment
+    if (!dto.message?.trim() && !dto.attachment?.url && !dto.attachment?.base64) {
+      throw new BadRequestException('Pesan teks atau lampiran media harus diisi.');
+    }
+
     // Pastikan user memiliki akses ke group ini
     const members = await this.contactGroupService.getMemberPhones(id, dto.memberIds, apiKey);
     if (members.length === 0) {
@@ -291,8 +325,30 @@ export class ContactGroupController {
         try {
           const chatId = `${member.phone}@c.us`;
           // Ganti {{name}} dengan nama penerima
-          const personalizedMessage = dto.message.replace(/\{\{name\}\}/g, member.name);
-          await engine.sendTextMessage(chatId, personalizedMessage);
+          const personalizedMessage = (dto.message || '').replace(/\{\{name\}\}/g, member.name);
+
+          if (dto.attachment && (dto.attachment.url || dto.attachment.base64)) {
+            const mediaInput: MediaInput = {
+              mimetype: dto.attachment.mimetype || 'application/octet-stream',
+              data: dto.attachment.url || dto.attachment.base64!,
+              filename: dto.attachment.filename,
+              caption: personalizedMessage.trim() || undefined,
+            };
+
+            const mime = (dto.attachment.mimetype || '').toLowerCase();
+            if (mime.startsWith('image/')) {
+              await engine.sendImageMessage(chatId, mediaInput);
+            } else if (mime.startsWith('video/')) {
+              await engine.sendVideoMessage(chatId, mediaInput);
+            } else if (mime.startsWith('audio/')) {
+              await engine.sendAudioMessage(chatId, mediaInput);
+            } else {
+              await engine.sendDocumentMessage(chatId, mediaInput);
+            }
+          } else {
+            await engine.sendTextMessage(chatId, personalizedMessage);
+          }
+
           results.push({ phone: member.phone, name: member.name, status: 'sent' });
         } catch (err) {
           results.push({
