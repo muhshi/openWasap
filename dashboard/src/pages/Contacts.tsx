@@ -119,7 +119,14 @@ export function Contacts() {
     currentName?: string;
     sent: number;
     failed: number;
+    lastError?: string;
   } | null>(null);
+  const abortBlastRef = useRef(false);
+
+  const handleStopBlast = () => {
+    abortBlastRef.current = true;
+    toast.warning('Menghentikan pengiriman blast...');
+  };
 
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
 
@@ -686,6 +693,7 @@ export function Contacts() {
   // ── Blast WA (Unified) ──────────────────────────────────────────────────────
 
   const openBlastModal = (mode: 'contacts' | 'group', groupId?: string) => {
+    abortBlastRef.current = false;
     setBlastMode(mode);
     setBlastGroupId(groupId ?? (groups[0]?.id ?? ''));
     setBlastMessage('');
@@ -719,6 +727,7 @@ export function Contacts() {
       return;
     }
 
+    abortBlastRef.current = false;
     setIsBlasting(true);
     setBlastProgress(null);
 
@@ -753,6 +762,10 @@ export function Contacts() {
 
       let sent = 0;
       let failed = 0;
+      let consecutiveFailures = 0;
+      let lastError = '';
+      let stoppedByUser = false;
+      let stoppedByDisconnect = false;
 
       setBlastProgress({
         done: 0,
@@ -763,6 +776,11 @@ export function Contacts() {
       });
 
       for (let i = 0; i < targets.length; i++) {
+        if (abortBlastRef.current) {
+          stoppedByUser = true;
+          break;
+        }
+
         const contact = targets[i];
         setBlastProgress({
           done: i,
@@ -770,6 +788,7 @@ export function Contacts() {
           currentName: contact.name,
           sent,
           failed,
+          lastError: lastError || undefined,
         });
 
         try {
@@ -779,10 +798,12 @@ export function Contacts() {
 
           if (attachmentPayload) {
             const mime = (attachmentPayload.mimetype || '').toLowerCase();
+            const fn = (attachmentPayload.filename || '').toLowerCase();
             let endpoint: 'send-image' | 'send-video' | 'send-audio' | 'send-document' = 'send-document';
-            if (mime.startsWith('image/')) endpoint = 'send-image';
-            else if (mime.startsWith('video/')) endpoint = 'send-video';
-            else if (mime.startsWith('audio/')) endpoint = 'send-audio';
+            if (mime.startsWith('image/') || fn.match(/\.(jpg|jpeg|png|webp|gif)$/i)) endpoint = 'send-image';
+            else if (mime.startsWith('video/') || fn.match(/\.(mp4|3gp|mov|avi|mkv)$/i)) endpoint = 'send-video';
+            else if (mime.startsWith('audio/') || fn.match(/\.(mp3|ogg|wav|m4a|aac)$/i)) endpoint = 'send-audio';
+            else endpoint = 'send-document';
 
             await messageApi.sendMedia(selectedSession, endpoint, {
               chatId,
@@ -796,9 +817,20 @@ export function Contacts() {
             await messageApi.sendText(selectedSession, chatId, personalizedMsg);
           }
           sent++;
-        } catch (err) {
+          consecutiveFailures = 0;
+        } catch (err: any) {
+          const errMsg = err?.response?.data?.message || err?.message || 'Gagal mengirim pesan';
           console.error(`[Blast] Gagal kirim ke ${contact.name} (${contact.phone}):`, err);
           failed++;
+          consecutiveFailures++;
+          lastError = `${contact.name}: ${errMsg}`;
+
+          const lower = errMsg.toLowerCase();
+          const isDisconnect = lower.includes('not active') || lower.includes('disconnected') || lower.includes('engine is not ready');
+          if (consecutiveFailures >= 3 && isDisconnect) {
+            stoppedByDisconnect = true;
+            break;
+          }
         }
 
         setBlastProgress({
@@ -807,34 +839,43 @@ export function Contacts() {
           currentName: i < targets.length - 1 ? targets[i + 1].name : undefined,
           sent,
           failed,
+          lastError: lastError || undefined,
         });
 
         if (i < targets.length - 1) {
-          await new Promise(r => setTimeout(r, blastDelay));
+          const step = 200;
+          for (let waited = 0; waited < blastDelay; waited += step) {
+            if (abortBlastRef.current) break;
+            await new Promise(r => setTimeout(r, Math.min(step, blastDelay - waited)));
+          }
         }
       }
 
       // Notifikasi feedback lengkap
-      if (failed === 0) {
+      if (stoppedByUser) {
+        toast.warning(`⏹️ Blast dihentikan: ${sent} terkirim, ${failed} gagal dari total ${targets.length} penerima.`);
+      } else if (stoppedByDisconnect) {
+        toast.error(`⚠️ Blast terhenti: Sesi WhatsApp terputus (disconnected). ${sent} berhasil, ${failed} gagal.`);
+      } else if (failed === 0) {
         toast.success(`🎉 Blast selesai! Seluruh ${sent} pesan berhasil terkirim.`);
       } else {
         toast.error(`⚠️ Blast selesai: ${sent} berhasil, ${failed} gagal dari total ${targets.length} penerima.`);
       }
 
-      // Jeda 1.2 detik agar pengguna melihat progres 100% sebelum modal ditutup
-      await new Promise(r => setTimeout(r, 1200));
-
-      setIsBlastOpen(false);
-      setBlastMessage('');
-      clearBlastAttachment();
-      if (selectedGroupMemberIds.length > 0) {
-        setSelectedGroupMemberIds([]);
+      // Jika berhasil 100% tanpa dihentikan, tutup modal otomatis setelah 1.5 detik
+      if (!stoppedByUser && !stoppedByDisconnect && failed === 0) {
+        await new Promise(r => setTimeout(r, 1500));
+        setIsBlastOpen(false);
+        setBlastMessage('');
+        clearBlastAttachment();
+        if (selectedGroupMemberIds.length > 0) {
+          setSelectedGroupMemberIds([]);
+        }
       }
     } catch (err) {
       toast.error(`Gagal mengirim blast: ${err instanceof Error ? err.message : ''}`);
     } finally {
       setIsBlasting(false);
-      setBlastProgress(null);
     }
   };
 
@@ -1947,23 +1988,78 @@ export function Contacts() {
                       Jeda: {blastDelay}ms
                     </span>
                   </div>
+
+                  {blastProgress.lastError && (
+                    <div style={{
+                      marginTop: '0.65rem',
+                      padding: '0.5rem 0.75rem',
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      borderRadius: 6,
+                      color: '#b91c1c',
+                      fontSize: '0.78rem',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '0.4rem',
+                      wordBreak: 'break-word',
+                    }}>
+                      <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>⚠️</span>
+                      <div>
+                        <strong>Error Terakhir:</strong> {blastProgress.lastError}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               <div className="modal-actions">
-                <button type="button" className="btn-cancel" onClick={() => setIsBlastOpen(false)} disabled={isBlasting}>Batal</button>
-                <button
-                  type="submit"
-                  className="btn-submit"
-                  disabled={isBlasting || (!blastMessage.trim() && !attachmentFile && !attachmentUrl.trim()) || !selectedSession}
-                  style={{ background: isBlasting ? undefined : '#16a34a' }}
-                >
-                  {isBlasting ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
-                  {isBlasting
-                    ? blastProgress ? `Mengirim ${blastProgress.done}/${blastProgress.total}...` : 'Mengirim...'
-                    : `Kirim ke ${blastMode === 'group' ? (selectedGroupMemberIds.length > 0 ? selectedGroupMemberIds.length : (groups.find(g => g.id === blastGroupId)?.memberCount ?? 0)) : selectedContactIds.length} Penerima`
-                  }
-                </button>
+                {isBlasting ? (
+                  <button
+                    type="button"
+                    onClick={handleStopBlast}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem 1rem',
+                      background: '#ef4444',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 2px 4px rgba(239, 68, 68, 0.2)',
+                    }}
+                  >
+                    <span>⏹️</span>
+                    <span>Hentikan Blast Sekarang</span>
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-cancel"
+                      onClick={() => {
+                        setIsBlastOpen(false);
+                        setBlastProgress(null);
+                      }}
+                    >
+                      {blastProgress && (blastProgress.failed > 0 || blastProgress.done === blastProgress.total) ? 'Tutup' : 'Batal'}
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn-submit"
+                      disabled={(!blastMessage.trim() && !attachmentFile && !attachmentUrl.trim()) || !selectedSession}
+                      style={{ background: '#16a34a' }}
+                    >
+                      <Send size={16} />
+                      {`Kirim ke ${blastMode === 'group' ? (selectedGroupMemberIds.length > 0 ? selectedGroupMemberIds.length : (groups.find(g => g.id === blastGroupId)?.memberCount ?? 0)) : selectedContactIds.length} Penerima`}
+                    </button>
+                  </>
+                )}
               </div>
             </form>
           </div>

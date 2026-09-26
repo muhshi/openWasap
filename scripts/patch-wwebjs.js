@@ -85,9 +85,54 @@ if (content.includes(targetMsgGet)) {
   console.log('[patch-wwebjs] Successfully patched Msg.get retry in Utils.js');
 }
 
+// 3. Patch mediaInfoToFile to cleanly handle base64 prefixes, newlines, and fallback names
+const targetMediaInfo = `    window.WWebJS.mediaInfoToFile = ({ data, mimetype, filename }) => {
+        const binaryData = window.atob(data);
+
+        const buffer = new ArrayBuffer(binaryData.length);
+        const view = new Uint8Array(buffer);
+        for (let i = 0; i < binaryData.length; i++) {
+            view[i] = binaryData.charCodeAt(i);
+        }
+
+        const blob = new Blob([buffer], { type: mimetype });
+        return new File([blob], filename, {
+            type: mimetype,
+            lastModified: Date.now(),
+        });
+    };`;
+
+const replacementMediaInfo = `    window.WWebJS.mediaInfoToFile = ({ data, mimetype, filename }) => {
+        const cleanData = typeof data === 'string'
+            ? (data.includes('base64,') ? data.split('base64,')[1] : data).replace(/[\\r\\n\\s]/g, '')
+            : data;
+        const binaryData = window.atob(cleanData);
+
+        const buffer = new ArrayBuffer(binaryData.length);
+        const view = new Uint8Array(buffer);
+        for (let i = 0; i < binaryData.length; i++) {
+            view[i] = binaryData.charCodeAt(i);
+        }
+
+        const safeMime = mimetype || 'application/octet-stream';
+        const safeName = filename || 'file';
+        const blob = new Blob([buffer], { type: safeMime });
+        return new File([blob], safeName, {
+            type: safeMime,
+            lastModified: Date.now(),
+        });
+    };`;
+
+if (content.includes(targetMediaInfo)) {
+  content = content.replace(targetMediaInfo, replacementMediaInfo);
+  modified = true;
+  console.log('[patch-wwebjs] Successfully patched mediaInfoToFile in Utils.js');
+}
+
 if (modified) {
   fs.writeFileSync(utilsPath, content, 'utf8');
   console.log('[patch-wwebjs] Finished writing patched Utils.js');
 } else {
   console.log('[patch-wwebjs] Utils.js already up to date.');
 }
+
