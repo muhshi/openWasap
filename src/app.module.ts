@@ -60,6 +60,7 @@ if (process.env.QUEUE_ENABLED === 'true') {
 
         if (dbType === 'mysql') {
           return {
+            name: 'main',
             type: 'mysql' as const,
             host: configService.get<string>('dataDatabase.host', 'localhost'),
             port: configService.get<number>('dataDatabase.port', 3306),
@@ -77,6 +78,7 @@ if (process.env.QUEUE_ENABLED === 'true') {
 
         if (dbType === 'postgres') {
           return {
+            name: 'main',
             type: 'postgres' as const,
             host: configService.get<string>('dataDatabase.host', 'localhost'),
             port: configService.get<number>('dataDatabase.port', 5432),
@@ -93,6 +95,7 @@ if (process.env.QUEUE_ENABLED === 'true') {
 
         // Default: SQLite
         return {
+          name: 'main',
           type: 'sqlite' as const,
           database: configService.get<string>('database.database', './data/main.sqlite'),
           entities,
@@ -110,6 +113,7 @@ if (process.env.QUEUE_ENABLED === 'true') {
       useFactory: (configService: ConfigService) => {
         const dbType = configService.get<string>('dataDatabase.type', 'sqlite');
         const baseConfig = {
+          name: 'data',
           entities: [
             __dirname + '/modules/session/**/*.entity{.ts,.js}',
             __dirname + '/modules/webhook/**/*.entity{.ts,.js}',

@@ -20,25 +20,101 @@ export function Sessions() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newSessionName, setNewSessionName] = useState('');
   const [creating, setCreating] = useState(false);
-  const [qrData, setQrData] = useState<{ sessionId: string; sessionName: string; qrCode: string } | null>(null);
+  const [syncProgress, setSyncProgress] = useState<Record<string, { percent?: number; message?: string }>>({});
+  const [qrData, setQrData] = useState<{
+    sessionId: string;
+    sessionName: string;
+    qrCode: string;
+    status?: string;
+    loadingPercent?: number;
+    loadingMessage?: string;
+  } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  const qrDataRef = useRef(qrData);
+  qrDataRef.current = qrData;
+
   useWebSocket({
     onSessionStatus: useCallback(
-      (event: { sessionId: string; status: string }) => {
+      (event: { sessionId: string; status: string; loadingPercent?: number; loadingMessage?: string }) => {
         setSessions(prev =>
-          prev.map(s => (s.id === event.sessionId ? { ...s, status: event.status as Session['status'] } : s)),
+          prev.map(s => {
+            if (s.id === event.sessionId) {
+              // Never downgrade a ready session back to authenticating via late loading_screen event
+              if (s.status === 'ready' && event.status === 'authenticating') {
+                return s;
+              }
+              return { ...s, status: event.status as Session['status'] };
+            }
+            return s;
+          }),
         );
         if (event.status === 'ready') {
+          setSyncProgress(prev => {
+            const next = { ...prev };
+            delete next[event.sessionId];
+            return next;
+          });
+          setQrData(prev => (prev?.sessionId === event.sessionId ? null : prev));
           toast.success(t('sessions.toasts.readyTitle'), t('sessions.toasts.readyDesc'));
-        } else if (event.status === 'disconnected') {
+          fetchSessions();
+          return;
+        }
+        if (event.loadingPercent !== undefined || event.loadingMessage !== undefined) {
+          setSyncProgress(prev => ({
+            ...prev,
+            [event.sessionId]: {
+              percent: event.loadingPercent,
+              message: event.loadingMessage,
+            },
+          }));
+        }
+        setQrData(prev => {
+          if (prev?.sessionId === event.sessionId) {
+            // Never downgrade a ready modal back to authenticating
+            if (prev.status === 'ready' && event.status === 'authenticating') {
+              return prev;
+            }
+            return {
+              ...prev,
+              status: event.status,
+              loadingPercent: event.loadingPercent ?? prev.loadingPercent,
+              loadingMessage: event.loadingMessage ?? prev.loadingMessage,
+            };
+          }
+          return prev;
+        });
+        if (event.status === 'disconnected') {
+          setQrData(prev => (prev?.sessionId === event.sessionId ? null : prev));
           toast.warning(t('sessions.toasts.disconnectedTitle'), t('sessions.toasts.disconnectedDesc'));
         }
       },
       [toast, t],
+    ),
+    onQRCode: useCallback(
+      (event: { sessionId: string; qrCode: string }) => {
+        // If already authenticating or ready, ignore incoming QR events
+        if (qrDataRef.current?.status === 'authenticating' || qrDataRef.current?.status === 'ready') {
+          return;
+        }
+        setQrData(prev => {
+          if (prev?.status === 'authenticating' || prev?.status === 'ready') {
+            return prev;
+          }
+          if (prev && prev.sessionId === event.sessionId) {
+            return { ...prev, qrCode: event.qrCode, status: 'qr_ready' };
+          }
+          const session = sessions.find(s => s.id === event.sessionId);
+          return { sessionId: event.sessionId, sessionName: session?.name || '', qrCode: event.qrCode, status: 'qr_ready' };
+        });
+        setSessions(prev =>
+          prev.map(s => (s.id === event.sessionId ? { ...s, status: 'qr_ready' as Session['status'] } : s)),
+        );
+      },
+      [sessions],
     ),
   });
 
@@ -59,36 +135,94 @@ export function Sessions() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-poll status when any session is connecting or authenticating to prevent stuck state
+  useEffect(() => {
+    const hasPending = sessions.some(s =>
+      ['authenticating', 'connecting', 'initializing'].includes(s.status),
+    );
+    if (!hasPending) return;
+
+    const interval = setInterval(() => {
+      void fetchSessions();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [sessions]);
+
   const qrRefreshInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentSessionName = useRef<string>('');
 
   const fetchQR = useCallback(async (sessionId: string) => {
+    // If modal is already showing authenticating, do not poll QR code; only check if session reaches ready
+    if (qrDataRef.current?.status === 'authenticating') {
+      try {
+        const session = await sessionApi.get(sessionId);
+        if (session?.status === 'ready') {
+          setQrData(null);
+          currentSessionName.current = '';
+          fetchSessions();
+        }
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
     try {
       const qr = await sessionApi.getQR(sessionId);
-      setQrData({ sessionId, sessionName: currentSessionName.current, qrCode: qr.qrCode });
-      if (qr.status === 'ready') {
+      if (qr?.status === 'ready') {
         setQrData(null);
         currentSessionName.current = '';
         fetchSessions();
+        return;
+      }
+      if (qr?.status === 'authenticating') {
+        setQrData(prev => (prev ? { ...prev, status: 'authenticating' } : null));
+        return;
+      }
+      if (qr?.qrCode) {
+        setQrData(prev => {
+          // If already authenticating or ready, do NOT revert back to QR code
+          if (prev?.status === 'authenticating' || prev?.status === 'ready') {
+            return prev;
+          }
+          return {
+            ...prev,
+            sessionId,
+            sessionName: prev?.sessionName || currentSessionName.current,
+            qrCode: qr.qrCode,
+            status: prev?.status || 'qr_ready',
+          };
+        });
       }
     } catch {
-      setQrData(null);
-      currentSessionName.current = '';
-      fetchSessions();
+      // If getQR fails (e.g. session already authenticated or error), check session status directly
+      try {
+        const session = await sessionApi.get(sessionId);
+        if (session?.status === 'ready') {
+          setQrData(null);
+          currentSessionName.current = '';
+          fetchSessions();
+        } else if (session?.status === 'authenticating') {
+          setQrData(prev => (prev ? { ...prev, status: 'authenticating' } : null));
+        }
+      } catch {
+        // Keep modal open while QR is preparing
+      }
     }
   }, []);
 
   useEffect(() => {
     if (qrData) {
       currentSessionName.current = qrData.sessionName;
+      void fetchQR(qrData.sessionId);
       qrRefreshInterval.current = setInterval(() => {
-        fetchQR(qrData.sessionId);
-      }, 5000);
+        void fetchQR(qrData.sessionId);
+      }, 2500);
     }
     return () => {
       if (qrRefreshInterval.current) clearInterval(qrRefreshInterval.current);
     };
-  }, [qrData, fetchQR]);
+  }, [qrData?.sessionId, fetchQR]);
 
   const handleCreate = async () => {
     if (!newSessionName.trim()) return;
@@ -128,35 +262,33 @@ export function Sessions() {
 
   const handleStart = async (id: string) => {
     const session = sessions.find(s => s.id === id);
-    if (session && ['initializing', 'connecting', 'qr_ready'].includes(session.status)) {
-      handleShowQR(id);
+    const sessionName = session?.name || '';
+
+    // Immediately open modal with loading spinner while engine initializes
+    setQrData({ sessionId: id, sessionName, qrCode: '' });
+
+    if (session && ['initializing', 'connecting', 'qr_ready', 'authenticating'].includes(session.status)) {
       return;
     }
 
     try {
       await sessionApi.start(id);
-      setSessions(sessions.map(s => (s.id === id ? { ...s, status: 'connecting' } : s)));
+      setSessions(prev => prev.map(s => (s.id === id ? { ...s, status: 'connecting' } : s)));
       await fetchSessions();
-      handleShowQR(id);
     } catch (err) {
       console.error('Failed to start:', err);
       await fetchSessions();
-      if (err instanceof Error && err.message.includes('already started')) {
-        handleShowQR(id);
+      if (!(err instanceof Error && err.message.includes('already started'))) {
+        toast.error('Failed to start session', err instanceof Error ? err.message : 'Unknown error');
       }
     }
   };
 
-  const handleShowQR = async (id: string) => {
+  const handleShowQR = (id: string) => {
     const session = sessions.find(s => s.id === id);
     const sessionName = session?.name || '';
-    try {
-      const qr = await sessionApi.getQR(id);
-      setQrData({ sessionId: id, sessionName, qrCode: qr.qrCode });
-    } catch (err) {
-      console.error('Failed to get QR:', err);
-      setError(t('sessions.qr.unavailable'));
-    }
+    setQrData({ sessionId: id, sessionName, qrCode: '' });
+    void fetchQR(id);
   };
 
   const handleStop = async (id: string) => {
@@ -188,7 +320,7 @@ export function Sessions() {
       statusFilter === 'all' ||
       (statusFilter === 'active' && s.status === 'ready') ||
       (statusFilter === 'inactive' && ['created', 'idle', 'disconnected'].includes(s.status)) ||
-      (statusFilter === 'connecting' && ['initializing', 'connecting', 'qr_ready'].includes(s.status));
+      (statusFilter === 'connecting' && ['initializing', 'connecting', 'qr_ready', 'authenticating'].includes(s.status));
     return matchesSearch && matchesStatus;
   });
 
@@ -326,7 +458,50 @@ export function Sessions() {
               </button>
             </div>
             <div className="modal-body" style={{ textAlign: 'center' }}>
-              {qrData.qrCode ? (
+              {qrData.status === 'authenticating' ? (
+                <div style={{ padding: '1.5rem 1rem' }}>
+                  <div style={{ position: 'relative', display: 'inline-block', marginBottom: '1rem' }}>
+                    <Loader2 size={52} className="animate-spin" style={{ color: '#22c55e' }} />
+                  </div>
+                  <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.2rem', fontWeight: 600 }}>
+                    QR Code Berhasil Di-scan!
+                  </h3>
+                  <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                    {qrData.loadingMessage
+                      ? `${qrData.loadingMessage} ${qrData.loadingPercent ? `(${qrData.loadingPercent}%)` : ''}`
+                      : 'Sedang menyinkronkan data & enkripsi sesi WhatsApp...'}
+                  </p>
+
+                  {/* Progress Bar */}
+                  <div style={{ width: '100%', maxWidth: '300px', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '999px', overflow: 'hidden', margin: '0 auto 1.5rem' }}>
+                    <div
+                      style={{
+                        width: qrData.loadingPercent ? `${qrData.loadingPercent}%` : '65%',
+                        height: '100%',
+                        background: 'linear-gradient(90deg, #22c55e, #10b981)',
+                        borderRadius: '999px',
+                        transition: 'width 0.4s ease',
+                      }}
+                    />
+                  </div>
+
+                  {/* Step explanations */}
+                  <div style={{ textAlign: 'left', maxWidth: '320px', margin: '0 auto', fontSize: '0.82rem', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '12px 16px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: '#22c55e', fontWeight: 'bold' }}>✓</span>
+                      <span>QR Code berhasil diverifikasi</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Loader2 size={12} className="animate-spin" style={{ color: '#22c55e' }} />
+                      <span style={{ color: '#f1f5f9' }}>Menyimpan sesi & sinkronisasi WhatsApp Web</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ opacity: 0.4 }}>○</span>
+                      <span style={{ opacity: 0.6 }}>Mengaktifkan koneksi (Ready)</span>
+                    </div>
+                  </div>
+                </div>
+              ) : qrData.qrCode ? (
                 <>
                   <img src={qrData.qrCode} alt="QR" style={{ maxWidth: '280px', borderRadius: '12px' }} />
                   <div className="qr-instructions">
@@ -341,7 +516,10 @@ export function Sessions() {
               ) : (
                 <div style={{ padding: '2rem' }}>
                   <Loader2 className="animate-spin" size={48} />
-                  <p>{t('sessions.qr.generating')}</p>
+                  <p style={{ marginTop: '1rem', fontWeight: 500 }}>{t('sessions.qr.generating')}</p>
+                  <p style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+                    Memulai browser headless & menyiapkan sesi WhatsApp...
+                  </p>
                 </div>
               )}
             </div>
@@ -443,17 +621,33 @@ export function Sessions() {
                 <span className={`status-pill ${session.status}`}>{formatStatus(session.status)}</span>
               </div>
 
-              {session.status === 'initializing' || session.status === 'connecting' || session.status === 'qr_ready' ? (
+              {['initializing', 'connecting', 'qr_ready', 'authenticating'].includes(session.status) ? (
                 <div className="qr-placeholder">
-                  <QrCode size={80} className="qr-icon" />
-                  <p>{session.status === 'qr_ready' ? t('sessions.qr.scanToConnect') : t('sessions.qr.preparing')}</p>
-                  <button
-                    className="btn-sm"
-                    onClick={() => handleShowQR(session.id)}
-                    disabled={session.status !== 'qr_ready'}
-                  >
-                    {session.status === 'qr_ready' ? t('sessions.qr.showQr') : t('sessions.qr.loading')}
-                  </button>
+                  {session.status === 'authenticating' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', padding: '16px 0' }}>
+                      <Loader2 size={36} className="animate-spin text-primary" style={{ color: '#22c55e' }} />
+                      <p style={{ margin: 0, fontWeight: 500, fontSize: '0.9rem' }}>
+                        {syncProgress[session.id]?.message
+                          ? `${syncProgress[session.id].message} ${syncProgress[session.id].percent ? `(${syncProgress[session.id].percent}%)` : ''}`
+                          : 'Sedang menyinkronkan WhatsApp...'}
+                      </p>
+                      <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                        Menyimpan sesi & sinkronisasi WhatsApp Web...
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <QrCode size={80} className="qr-icon" />
+                      <p>{session.status === 'qr_ready' ? t('sessions.qr.scanToConnect') : t('sessions.qr.preparing')}</p>
+                      <button
+                        className="btn-sm"
+                        onClick={() => handleShowQR(session.id)}
+                        disabled={session.status !== 'qr_ready'}
+                      >
+                        {session.status === 'qr_ready' ? t('sessions.qr.showQr') : t('sessions.qr.loading')}
+                      </button>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="session-info">
@@ -483,7 +677,7 @@ export function Sessions() {
                     <Play size={16} />
                     {t('sessions.actions.start')}
                   </button>
-                ) : canWrite && ['ready', 'initializing', 'connecting', 'qr_ready'].includes(session.status) ? (
+                ) : canWrite && ['ready', 'initializing', 'connecting', 'qr_ready', 'authenticating'].includes(session.status) ? (
                   <button className="btn-action" onClick={() => handleStop(session.id)}>
                     <Square size={16} />
                     {t('sessions.actions.stop')}

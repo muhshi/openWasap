@@ -57,6 +57,8 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   private phoneNumber: string | null = null;
   private pushName: string | null = null;
   private callbacks: EngineEventCallbacks = {};
+  private authWatchdogTimer: NodeJS.Timeout | null = null;
+  private initTimestamp: number = Math.floor(Date.now() / 1000);
 
   constructor(private readonly config: WhatsAppWebJsConfig) {
     super();
@@ -66,6 +68,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
   async initialize(callbacks: EngineEventCallbacks): Promise<void> {
     this.callbacks = callbacks;
+    this.initTimestamp = Math.floor(Date.now() / 1000);
     this.setStatus(EngineStatus.INITIALIZING);
 
     try {
@@ -78,6 +81,9 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         '--no-first-run',
         '--no-zygote',
         '--disable-gpu',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
       ];
 
       // Add proxy configuration if provided
@@ -88,6 +94,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         );
       }
 
+      const cachePath = path.resolve(this.config.sessionDataPath, '../cache');
       this.client = new Client({
         authStrategy: new LocalAuth({
           clientId: this.config.sessionId,
@@ -99,8 +106,39 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
           executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         },
         webVersionCache: {
-          type: 'remote',
-          remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
+          type: 'local',
+          path: cachePath,
+        },
+        // Prevent WhatsApp Web from crashing on WAWebConnModel Conn.serialize()
+        evalOnNewDoc: () => {
+          try {
+            const win = window as any;
+            const patchConn = () => {
+              try {
+                if (typeof win.require === 'function') {
+                  const origReq = win.require;
+                  win.require = function (moduleName: string) {
+                    const res = origReq.apply(this, arguments);
+                    if (moduleName === 'WAWebConnModel' && res) {
+                      if (!res.Conn) res.Conn = {};
+                      if (typeof res.Conn.serialize !== 'function') {
+                        res.Conn.serialize = function () {
+                          return {};
+                        };
+                      }
+                    }
+                    return res;
+                  };
+                }
+              } catch {
+                // ignore
+              }
+            };
+            patchConn();
+            win.addEventListener?.('DOMContentLoaded', patchConn);
+          } catch {
+            // ignore
+          }
         },
       });
 
@@ -110,6 +148,126 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       this.setStatus(EngineStatus.FAILED);
       throw error;
     }
+  }
+
+  private stopAuthWatchdog(): void {
+    if (this.authWatchdogTimer) {
+      clearInterval(this.authWatchdogTimer);
+      this.authWatchdogTimer = null;
+    }
+  }
+
+  private startAuthWatchdog(): void {
+    this.stopAuthWatchdog();
+    let checks = 0;
+    const maxChecks = 40; // 40 * 1500ms = 60s
+
+    this.authWatchdogTimer = setInterval(async () => {
+      checks++;
+      if (this.status !== EngineStatus.AUTHENTICATING || !this.client || checks > maxChecks) {
+        this.stopAuthWatchdog();
+        return;
+      }
+
+      try {
+        const pupPage = (this.client as any).pupPage;
+        if (!pupPage || pupPage.isClosed?.()) {
+          return;
+        }
+
+        const authInfo = await pupPage.evaluate(() => {
+          try {
+            const win = window as any;
+            const doc = document;
+            const hasPaneSide = !!doc.querySelector('#pane-side');
+            const hasHeader = !!doc.querySelector('header');
+            const hasChatList = !!doc.querySelector('[data-testid="chat-list"]');
+            const hasChatInput = !!doc.querySelector('div[contenteditable="true"]');
+            const isDomReady = hasPaneSide || hasHeader || hasChatList || hasChatInput;
+
+            let phone: string | null = null;
+            let pushName: string | null = null;
+
+            // 1. Check WAWebUserPrefsMeUser
+            try {
+              const meUser =
+                win.require?.('WAWebUserPrefsMeUser')?.getMaybeMePnUser?.() ||
+                win.require?.('WAWebUserPrefsMeUser')?.getMaybeMeLidUser?.();
+              if (meUser?.user) phone = String(meUser.user);
+              else if (typeof meUser === 'string') phone = meUser.split('@')[0];
+            } catch {
+              // ignore
+            }
+
+            // 2. Check localStorage last-wid
+            if (!phone) {
+              try {
+                const lastWid = win.localStorage?.getItem('last-wid') || win.localStorage?.getItem('last-wid-md');
+                if (lastWid) {
+                  const cleaned = lastWid.replace(/["\s]/g, '').split('@')[0].split(':')[0];
+                  if (cleaned) phone = cleaned;
+                }
+              } catch {
+                // ignore
+              }
+            }
+
+            // 3. Check Pushname
+            try {
+              pushName = win.require?.('WAWebConnModel')?.Conn?.pushname || win.localStorage?.getItem('pushname') || null;
+              if (pushName) pushName = pushName.replace(/["\s]/g, '');
+            } catch {
+              // ignore
+            }
+
+            // 4. Socket state
+            let socketConnected = false;
+            try {
+              socketConnected = win.require?.('WAWebSocketModel')?.Socket?.state === 'CONNECTED';
+            } catch {
+              // ignore
+            }
+
+            return {
+              isLoggedIn: isDomReady || socketConnected || !!phone,
+              phone,
+              pushName,
+            };
+          } catch {
+            return null;
+          }
+        }).catch(() => null);
+
+        if (authInfo?.isLoggedIn && this.status === EngineStatus.AUTHENTICATING) {
+          this.logger.log(
+            `[Watchdog] Session ${this.config.sessionId} authenticated in DOM (phone: ${authInfo.phone || 'unknown'}). Transitioning to READY...`,
+          );
+          this.stopAuthWatchdog();
+
+          const phone = authInfo.phone || '';
+          const pushName = authInfo.pushName || '';
+          this.phoneNumber = phone;
+          this.pushName = pushName;
+
+          if (this.client) {
+            if (!(this.client as any).info) {
+              (this.client as any).info = {
+                wid: {
+                  user: phone,
+                  _serialized: phone ? `${phone}@c.us` : '',
+                },
+                pushname: pushName,
+              };
+            }
+          }
+
+          this.setStatus(EngineStatus.READY);
+          this.callbacks.onReady?.(phone, pushName);
+        }
+      } catch (err) {
+        this.logger.debug(`[Watchdog] Check error: ${String(err)}`);
+      }
+    }, 1500);
   }
 
   private setupEventHandlers(): void {
@@ -133,9 +291,21 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     this.client.on('authenticated', () => {
       this.setStatus(EngineStatus.AUTHENTICATING);
       this.qrCode = null;
+      this.startAuthWatchdog();
+    });
+
+    this.client.on('loading_screen', (percent: number, message: string) => {
+      this.qrCode = null;
+      if (this.status === EngineStatus.READY) {
+        return; // Session is already ready, ignore late sync progress
+      }
+      this.setStatus(EngineStatus.AUTHENTICATING);
+      this.logger.log(`[Sync] WhatsApp sync progress: ${percent}% (${message}) for session: ${this.config.sessionId}`);
+      this.callbacks.onLoadingScreen?.(percent, message);
     });
 
     this.client.on('ready', () => {
+      this.stopAuthWatchdog();
       try {
         const info = this.client?.info;
         this.phoneNumber = info?.wid?.user || null;
@@ -164,8 +334,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
           isGroup: msg.from.endsWith('@g.us'),
         };
 
-        // Handle media
-        if (msg.hasMedia) {
+        // Only download media for fresh messages received while session is running
+        // Skip historical backlog sync to save CPU, RAM and bandwidth
+        const isHistoricalMessage = msg.timestamp && msg.timestamp < (this.initTimestamp - 60);
+        if (msg.hasMedia && !isHistoricalMessage) {
           try {
             const media = await msg.downloadMedia();
             if (media) {
@@ -176,7 +348,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
               };
             }
           } catch (error) {
-            this.logger.error('Error downloading media', String(error));
+            this.logger.debug(`Error downloading media for msg ${msg.id?._serialized}: ${String(error)}`);
           }
         }
 
@@ -189,7 +361,7 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
               body: quoted.body,
             };
           } catch (error) {
-            this.logger.error('Error getting quoted message', String(error));
+            this.logger.debug(`Error getting quoted message for msg ${msg.id?._serialized}: ${String(error)}`);
           }
         }
 
@@ -215,6 +387,9 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   }
 
   private setStatus(status: EngineStatus): void {
+    if (status !== EngineStatus.AUTHENTICATING) {
+      this.stopAuthWatchdog();
+    }
     this.status = status;
     this.callbacks.onStateChanged?.(status);
     this.emit('stateChanged', status);
@@ -278,12 +453,36 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
     return this.pushName;
   }
 
+  private formatChatId(chatId: string): string {
+    if (!chatId) return chatId;
+    const trimmed = chatId.trim();
+    if (trimmed.endsWith('@g.us') || trimmed.endsWith('@lid') || trimmed.endsWith('@newsletter') || trimmed.endsWith('@broadcast')) {
+      return trimmed;
+    }
+    let clean = trimmed.endsWith('@c.us') ? trimmed.slice(0, -5) : trimmed;
+    clean = clean.replace(/\D/g, '');
+    while (clean.startsWith('0')) {
+      clean = clean.substring(1);
+    }
+    if (clean.startsWith('8')) {
+      clean = '62' + clean;
+    }
+    return `${clean}@c.us`;
+  }
+
   async sendTextMessage(chatId: string, text: string): Promise<MessageResult> {
     this.ensureReady();
-    const msg = await this.client!.sendMessage(chatId, text);
+    const targetChatId = this.formatChatId(chatId);
+    let msg: any = null;
+    try {
+      msg = await this.client!.sendMessage(targetChatId, text);
+    } catch (err: any) {
+      this.logger.error(`Error sending text message to ${targetChatId}: ${err?.message || err}`);
+      throw err;
+    }
     return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
+      id: msg?.id?._serialized || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      timestamp: msg?.timestamp || Math.floor(Date.now() / 1000),
     };
   }
 
@@ -296,38 +495,51 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   }
 
   async sendAudioMessage(chatId: string, media: MediaInput): Promise<MessageResult> {
-    return this.sendMediaMessage(chatId, media);
+    return this.sendMediaMessage(chatId, media, { sendAudioAsVoice: false });
   }
 
   async sendDocumentMessage(chatId: string, media: MediaInput): Promise<MessageResult> {
-    return this.sendMediaMessage(chatId, media);
+    return this.sendMediaMessage(chatId, media, { sendMediaAsDocument: true });
   }
 
-  private async sendMediaMessage(chatId: string, media: MediaInput): Promise<MessageResult> {
+  private async sendMediaMessage(
+    chatId: string,
+    media: MediaInput,
+    extraOptions?: Record<string, any>,
+  ): Promise<MessageResult> {
     this.ensureReady();
+    const targetChatId = this.formatChatId(chatId);
 
     let messageMedia: MessageMedia;
 
     if (typeof media.data === 'string') {
       if (media.data.startsWith('http://') || media.data.startsWith('https://')) {
         // URL
-        messageMedia = await MessageMedia.fromUrl(media.data);
+        messageMedia = await MessageMedia.fromUrl(media.data, { unsafeMime: true });
       } else {
         // Base64
-        messageMedia = new MessageMedia(media.mimetype, media.data, media.filename);
+        const cleanBase64 = (media.data.includes('base64,') ? media.data.split('base64,')[1] : media.data).trim();
+        messageMedia = new MessageMedia(media.mimetype, cleanBase64, media.filename);
       }
     } else {
       // Buffer
       messageMedia = new MessageMedia(media.mimetype, media.data.toString('base64'), media.filename);
     }
 
-    const msg = await this.client!.sendMessage(chatId, messageMedia, {
-      caption: media.caption,
-    });
+    let msg: any = null;
+    try {
+      msg = await this.client!.sendMessage(targetChatId, messageMedia, {
+        caption: media.caption,
+        ...extraOptions,
+      });
+    } catch (err: any) {
+      this.logger.error(`Error sending media message to ${targetChatId}: ${err?.message || err}`);
+      throw err;
+    }
 
     return {
-      id: msg.id._serialized,
-      timestamp: msg.timestamp,
+      id: msg?.id?._serialized || `media_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      timestamp: msg?.timestamp || Math.floor(Date.now() / 1000),
     };
   }
 
@@ -434,7 +646,8 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       if (media.data.startsWith('http://') || media.data.startsWith('https://')) {
         messageMedia = await MessageMedia.fromUrl(media.data);
       } else {
-        messageMedia = new MessageMedia(media.mimetype, media.data, media.filename);
+        const cleanBase64 = media.data.includes('base64,') ? media.data.split('base64,')[1] : media.data;
+        messageMedia = new MessageMedia(media.mimetype, cleanBase64, media.filename);
       }
     } else {
       messageMedia = new MessageMedia(media.mimetype, media.data.toString('base64'), media.filename);

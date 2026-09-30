@@ -87,7 +87,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 
 # Create data directories and set ownership ONLY on data dir, not the whole /app
-RUN mkdir -p /app/data/sessions /app/data/media /app/data/plugins \
+RUN mkdir -p /app/data/sessions /app/data/media /app/data/plugins /app/data/cache \
     && chown -R openwa:openwa /app/data
 
 EXPOSE 2785

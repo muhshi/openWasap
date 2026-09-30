@@ -14,15 +14,20 @@ export default defineConfig({
     host: '127.0.0.1',
     proxy: {
       '/api': {
-        target: 'http://localhost:2785',
+        target: 'http://127.0.0.1:2785',
         changeOrigin: true,
         secure: false,
       },
       '/auth/sipetra': {
-        target: 'http://localhost:2785',
+        target: 'http://127.0.0.1:2785',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/auth\/sipetra/, '/api/auth/sipetra'),
+      },
+      '/socket.io': {
+        target: 'http://127.0.0.1:2785',
+        ws: true,
+        changeOrigin: true,
       },
     },
   },

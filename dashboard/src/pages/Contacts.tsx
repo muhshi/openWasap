@@ -18,10 +18,14 @@ import {
   ArrowLeft,
   Globe,
   Lock,
+  Paperclip,
+  FileText,
+  Image as ImageIcon,
+  Link as LinkIcon,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { importedContactApi, contactGroupApi, messageApi } from '../services/api';
-import type { ImportedContact, ContactGroup, ContactGroupDetail } from '../services/api';
+import type { ImportedContact, ContactGroup, ContactGroupDetail, BlastAttachmentPayload } from '../services/api';
 import { useSessionsQuery } from '../hooks/queries';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useRole } from '../hooks/useRole';
@@ -39,7 +43,7 @@ type GroupView = 'list' | 'detail';
 export function Contacts() {
   const { t } = useTranslation();
   useDocumentTitle(t('contacts.title'));
-  const { canWrite, apiKeyId, isAdmin } = useRole();
+  const { canWrite } = useRole();
   const toast = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bpsFileInputRef = useRef<HTMLInputElement>(null);
@@ -107,11 +111,77 @@ export function Contacts() {
   const [blastMode, setBlastMode] = useState<'contacts' | 'group'>('contacts');
   const [blastGroupId, setBlastGroupId] = useState('');
   const [blastMessage, setBlastMessage] = useState('');
-  const [blastDelay, setBlastDelay] = useState(3000);
+  const [blastDelay, setBlastDelay] = useState(5000);
   const [isBlasting, setIsBlasting] = useState(false);
-  const [blastProgress, setBlastProgress] = useState<{ done: number; total: number } | null>(null);
+  const [blastProgress, setBlastProgress] = useState<{
+    done: number;
+    total: number;
+    currentName?: string;
+    sent: number;
+    failed: number;
+    lastError?: string;
+  } | null>(null);
+  const abortBlastRef = useRef(false);
+
+  const handleStopBlast = () => {
+    abortBlastRef.current = true;
+    toast.warning('Menghentikan pengiriman blast...');
+  };
 
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
+
+  // Blast WA Media Attachment
+  const [attachmentMode, setAttachmentMode] = useState<'file' | 'url'>('file');
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentBase64, setAttachmentBase64] = useState<string | null>(null);
+  const [attachmentMime, setAttachmentMime] = useState<string | null>(null);
+  const [attachmentFilename, setAttachmentFilename] = useState<string | null>(null);
+  const [attachmentFileSize, setAttachmentFileSize] = useState<string | null>(null);
+  const [attachmentUrl, setAttachmentUrl] = useState('');
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
+  const blastFileInputRef = useRef<HTMLInputElement>(null);
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleBlastFileSelect = (file: File) => {
+    if (file.size > 25 * 1024 * 1024) {
+      toast.error('Ukuran file maksimal 25 MB.');
+      return;
+    }
+    setAttachmentFile(file);
+    setAttachmentFilename(file.name);
+    setAttachmentMime(file.type || 'application/octet-stream');
+    setAttachmentFileSize(formatFileSize(file.size));
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = reader.result as string;
+      setAttachmentBase64(b64);
+      if (file.type.startsWith('image/')) {
+        setAttachmentPreviewUrl(b64);
+      } else {
+        setAttachmentPreviewUrl(null);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearBlastAttachment = () => {
+    setAttachmentFile(null);
+    setAttachmentBase64(null);
+    setAttachmentMime(null);
+    setAttachmentFilename(null);
+    setAttachmentFileSize(null);
+    setAttachmentUrl('');
+    setAttachmentPreviewUrl(null);
+    if (blastFileInputRef.current) {
+      blastFileInputRef.current.value = '';
+    }
+  };
 
   // Add-to-group picker modal
   const [isAddToGroupOpen, setIsAddToGroupOpen] = useState(false);
@@ -124,94 +194,7 @@ export function Contacts() {
   // ── Load Data ───────────────────────────────────────────────────────────────
 
 
-  // ── Bulk Actions ──
-  const handleBulkUpdateContacts = async (isShared: boolean) => {
-    if (!selectedContactIds.length) return;
-    try {
-      setIsLoadingContacts(true);
-      await importedContactApi.bulkUpdatePrivacy(selectedContactIds, isShared);
-      toast.success('Privasi kontak berhasil diubah');
-      setSelectedContactIds([]);
-      loadImportedContacts();
-    } catch (e: any) {
-      toast.error('Gagal mengubah privasi: ' + e.message);
-      setIsLoadingContacts(false);
-    }
-  };
 
-  const handleBulkDeleteContacts = async () => {
-    if (!selectedContactIds.length) return;
-    if (!window.confirm(`Yakin hapus ${selectedContactIds.length} kontak?`)) return;
-    try {
-      setIsLoadingContacts(true);
-      await importedContactApi.bulkDelete(selectedContactIds);
-      toast.success('Kontak berhasil dihapus');
-      setSelectedContactIds([]);
-      loadImportedContacts();
-    } catch (e: any) {
-      toast.error('Gagal menghapus kontak: ' + e.message);
-      setIsLoadingContacts(false);
-    }
-  };
-
-  const handleBulkUpdateGroups = async (isShared: boolean) => {
-    if (!selectedGroupIds.length) return;
-    try {
-      setIsLoadingGroups(true);
-      await contactGroupApi.bulkUpdatePrivacy(selectedGroupIds, isShared);
-      toast.success('Privasi grup berhasil diubah');
-      setSelectedGroupIds([]);
-      loadGroups();
-    } catch (e: any) {
-      toast.error('Gagal mengubah privasi: ' + e.message);
-      setIsLoadingGroups(false);
-    }
-  };
-
-  const handleBulkDeleteGroups = async () => {
-    if (!selectedGroupIds.length) return;
-    if (!window.confirm(`Yakin hapus ${selectedGroupIds.length} grup?`)) return;
-    try {
-      setIsLoadingGroups(true);
-      await contactGroupApi.bulkDelete(selectedGroupIds);
-      toast.success('Grup berhasil dihapus');
-      setSelectedGroupIds([]);
-      loadGroups();
-    } catch (e: any) {
-      toast.error('Gagal menghapus grup: ' + e.message);
-      setIsLoadingGroups(false);
-    }
-  };
-
-  const handleToggleContactPrivacy = async (c: ImportedContact) => {
-    if (!isAdmin && c.ownerApiKeyId !== apiKeyId) {
-      toast.error('Anda tidak memiliki akses untuk mengubah kontak ini');
-      return;
-    }
-    try {
-      setIsLoadingContacts(true);
-      await importedContactApi.bulkUpdatePrivacy([c.id], !c.isShared);
-      loadImportedContacts();
-    } catch (e: any) {
-      toast.error('Gagal mengubah privasi: ' + e.message);
-      setIsLoadingContacts(false);
-    }
-  };
-
-  const handleToggleGroupPrivacy = async (g: ContactGroup) => {
-    if (!isAdmin && g.ownerApiKeyId !== apiKeyId) {
-      toast.error('Anda tidak memiliki akses untuk mengubah grup ini');
-      return;
-    }
-    try {
-      setIsLoadingGroups(true);
-      await contactGroupApi.update(g.id, g.name, g.description, !g.isShared);
-      loadGroups();
-    } catch (e: any) {
-      toast.error('Gagal mengubah privasi: ' + e.message);
-      setIsLoadingGroups(false);
-    }
-  };
 
   const toastRef = useRef(toast);
   toastRef.current = toast;
@@ -691,54 +674,189 @@ export function Contacts() {
   // ── Blast WA (Unified) ──────────────────────────────────────────────────────
 
   const openBlastModal = (mode: 'contacts' | 'group', groupId?: string) => {
+    abortBlastRef.current = false;
     setBlastMode(mode);
     setBlastGroupId(groupId ?? (groups[0]?.id ?? ''));
     setBlastMessage('');
     setBlastProgress(null);
+    clearBlastAttachment();
+    setAttachmentMode('file');
     setIsBlastOpen(true);
   };
 
   const handleBlast = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSession || !blastMessage.trim()) return;
+    if (!selectedSession) return;
+
+    let attachmentPayload: BlastAttachmentPayload | undefined = undefined;
+    if (attachmentMode === 'file' && attachmentBase64) {
+      attachmentPayload = {
+        base64: attachmentBase64,
+        mimetype: attachmentMime || undefined,
+        filename: attachmentFilename || undefined,
+      };
+    } else if (attachmentMode === 'url' && attachmentUrl.trim()) {
+      attachmentPayload = {
+        url: attachmentUrl.trim(),
+        filename: attachmentUrl.split('/').pop()?.split('?')[0] || 'media-file',
+        mimetype: attachmentMime || undefined,
+      };
+    }
+
+    if (!blastMessage.trim() && !attachmentPayload) {
+      toast.error('Pesan teks atau lampiran media harus diisi.');
+      return;
+    }
+
+    abortBlastRef.current = false;
     setIsBlasting(true);
     setBlastProgress(null);
 
     try {
+      let targets: Array<{ id: string; name: string; phone: string }> = [];
+
       if (blastMode === 'group') {
-        // Backend handles group blast
         if (!blastGroupId) { toast.error('Pilih group terlebih dahulu.'); return; }
-        const memberIdsToBlast = selectedGroupMemberIds.length > 0 ? selectedGroupMemberIds : undefined;
-        const result = await contactGroupApi.blast(blastGroupId, selectedSession, blastMessage.trim(), blastDelay, memberIdsToBlast);
-        toast.success(result.message);
+        const groupDetail = await contactGroupApi.get(blastGroupId);
+        if (!groupDetail || !groupDetail.members || groupDetail.members.length === 0) {
+          toast.error('Group tidak memiliki anggota. Tambahkan kontak terlebih dahulu.');
+          return;
+        }
+
+        let members = groupDetail.members;
+        if (selectedGroupMemberIds.length > 0) {
+          members = members.filter(m => selectedGroupMemberIds.includes(m.id));
+        }
+
+        targets = members
+          .filter(m => m.phone)
+          .map(m => ({ id: m.id, name: m.name, phone: m.phone }));
+      } else {
+        const selected = importedContacts.filter(c => selectedContactIds.includes(c.id));
+        targets = selected.map(c => ({ id: c.id, name: c.name, phone: c.phone }));
+      }
+
+      if (targets.length === 0) {
+        toast.error('Tidak ada kontak tujuan yang dipilih atau nomor telepon kosong.');
+        return;
+      }
+
+      let sent = 0;
+      let failed = 0;
+      let consecutiveFailures = 0;
+      let lastError = '';
+      let stoppedByUser = false;
+      let stoppedByDisconnect = false;
+
+      setBlastProgress({
+        done: 0,
+        total: targets.length,
+        currentName: targets[0].name,
+        sent: 0,
+        failed: 0,
+      });
+
+      for (let i = 0; i < targets.length; i++) {
+        if (abortBlastRef.current) {
+          stoppedByUser = true;
+          break;
+        }
+
+        const contact = targets[i];
+        setBlastProgress({
+          done: i,
+          total: targets.length,
+          currentName: contact.name,
+          sent,
+          failed,
+          lastError: lastError || undefined,
+        });
+
+        try {
+          const phoneOnly = cleanPhoneNumber(contact.phone);
+          const chatId = `${phoneOnly}@c.us`;
+          const personalizedMsg = blastMessage.trim().replace(/\{\{name\}\}/g, contact.name);
+
+          if (attachmentPayload) {
+            const mime = (attachmentPayload.mimetype || '').toLowerCase();
+            const fn = (attachmentPayload.filename || '').toLowerCase();
+            let endpoint: 'send-image' | 'send-video' | 'send-audio' | 'send-document' = 'send-document';
+            if (mime.startsWith('image/') || fn.match(/\.(jpg|jpeg|png|webp|gif)$/i)) endpoint = 'send-image';
+            else if (mime.startsWith('video/') || fn.match(/\.(mp4|3gp|mov|avi|mkv)$/i)) endpoint = 'send-video';
+            else if (mime.startsWith('audio/') || fn.match(/\.(mp3|ogg|wav|m4a|aac)$/i)) endpoint = 'send-audio';
+            else endpoint = 'send-document';
+
+            await messageApi.sendMedia(selectedSession, endpoint, {
+              chatId,
+              url: attachmentPayload.url,
+              base64: attachmentPayload.base64,
+              mimetype: attachmentPayload.mimetype,
+              filename: attachmentPayload.filename,
+              caption: personalizedMsg || undefined,
+            });
+          } else {
+            await messageApi.sendText(selectedSession, chatId, personalizedMsg);
+          }
+          sent++;
+          consecutiveFailures = 0;
+        } catch (err: any) {
+          const errMsg = err?.response?.data?.message || err?.message || 'Gagal mengirim pesan';
+          console.error(`[Blast] Gagal kirim ke ${contact.name} (${contact.phone}):`, err);
+          failed++;
+          consecutiveFailures++;
+          lastError = `${contact.name}: ${errMsg}`;
+
+          const lower = errMsg.toLowerCase();
+          const isDisconnect = lower.includes('not active') || lower.includes('disconnected') || lower.includes('engine is not ready');
+          if (consecutiveFailures >= 3 && isDisconnect) {
+            stoppedByDisconnect = true;
+            break;
+          }
+        }
+
+        setBlastProgress({
+          done: i + 1,
+          total: targets.length,
+          currentName: i < targets.length - 1 ? targets[i + 1].name : undefined,
+          sent,
+          failed,
+          lastError: lastError || undefined,
+        });
+
+        if (i < targets.length - 1) {
+          const step = 200;
+          for (let waited = 0; waited < blastDelay; waited += step) {
+            if (abortBlastRef.current) break;
+            await new Promise(r => setTimeout(r, Math.min(step, blastDelay - waited)));
+          }
+        }
+      }
+
+      // Notifikasi feedback lengkap
+      if (stoppedByUser) {
+        toast.warning(`⏹️ Blast dihentikan: ${sent} terkirim, ${failed} gagal dari total ${targets.length} penerima.`);
+      } else if (stoppedByDisconnect) {
+        toast.error(`⚠️ Blast terhenti: Sesi WhatsApp terputus (disconnected). ${sent} berhasil, ${failed} gagal.`);
+      } else if (failed === 0) {
+        toast.success(`🎉 Blast selesai! Seluruh ${sent} pesan berhasil terkirim.`);
+      } else {
+        toast.error(`⚠️ Blast selesai: ${sent} berhasil, ${failed} gagal dari total ${targets.length} penerima.`);
+      }
+
+      // Jika berhasil 100% tanpa dihentikan, tutup modal otomatis setelah 1.5 detik
+      if (!stoppedByUser && !stoppedByDisconnect && failed === 0) {
+        await new Promise(r => setTimeout(r, 1500));
+        setIsBlastOpen(false);
+        setBlastMessage('');
+        clearBlastAttachment();
         if (selectedGroupMemberIds.length > 0) {
           setSelectedGroupMemberIds([]);
         }
-      } else {
-        // Frontend loop for selected contacts
-        const targets = importedContacts.filter(c => selectedContactIds.includes(c.id));
-        if (targets.length === 0) { toast.error('Tidak ada kontak yang dipilih.'); return; }
-        let sent = 0; let failed = 0;
-        setBlastProgress({ done: 0, total: targets.length });
-        for (let i = 0; i < targets.length; i++) {
-          const contact = targets[i];
-          try {
-            const chatId = `${contact.phone}@c.us`;
-            const msg = blastMessage.trim().replace(/\{\{name\}\}/g, contact.name);
-            await messageApi.sendText(selectedSession, chatId, msg);
-            sent++;
-          } catch { failed++; }
-          setBlastProgress({ done: i + 1, total: targets.length });
-          if (i < targets.length - 1) await new Promise(r => setTimeout(r, blastDelay));
-        }
-        toast.success(`Blast selesai: ${sent} berhasil${failed > 0 ? `, ${failed} gagal` : ''}.`);
       }
-      setIsBlastOpen(false); setBlastMessage('');
     } catch (err) {
       toast.error(`Gagal mengirim blast: ${err instanceof Error ? err.message : ''}`);
     } finally {
       setIsBlasting(false);
-      setBlastProgress(null);
     }
   };
 
@@ -1689,20 +1807,159 @@ export function Contacts() {
             )}
 
             <form onSubmit={handleBlast}>
+              {/* Media Attachment Card */}
+              <div className="blast-attachment-container">
+                <div className="blast-attachment-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Paperclip size={14} />
+                    <span>Lampiran Media (Opsional)</span>
+                  </div>
+                  <div className="blast-attachment-tabs">
+                    <button
+                      type="button"
+                      className={`blast-attachment-tab-btn ${attachmentMode === 'file' ? 'active' : ''}`}
+                      onClick={() => setAttachmentMode('file')}
+                      disabled={isBlasting}
+                    >
+                      <Upload size={12} />
+                      <span>Upload File</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`blast-attachment-tab-btn ${attachmentMode === 'url' ? 'active' : ''}`}
+                      onClick={() => setAttachmentMode('url')}
+                      disabled={isBlasting}
+                    >
+                      <LinkIcon size={12} />
+                      <span>Media URL</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="blast-attachment-body">
+                  {attachmentMode === 'file' ? (
+                    attachmentFile ? (
+                      <div className="blast-attachment-preview">
+                        {attachmentPreviewUrl ? (
+                          <img src={attachmentPreviewUrl} alt="Preview" className="blast-attachment-thumb" />
+                        ) : (
+                          <div className="blast-attachment-icon-box">
+                            <FileText size={20} />
+                          </div>
+                        )}
+                        <div className="blast-attachment-info">
+                          <div className="blast-attachment-filename" title={attachmentFilename ?? ''}>
+                            {attachmentFilename}
+                          </div>
+                          <div className="blast-attachment-size">
+                            {attachmentFileSize} &bull; {attachmentMime}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="blast-attachment-remove-btn"
+                          onClick={clearBlastAttachment}
+                          disabled={isBlasting}
+                          title="Hapus file"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <input
+                          ref={blastFileInputRef}
+                          type="file"
+                          id="blast-file-input"
+                          style={{ display: 'none' }}
+                          disabled={isBlasting}
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleBlastFileSelect(file);
+                          }}
+                        />
+                        <div
+                          className="blast-attachment-dropzone"
+                          onClick={() => blastFileInputRef.current?.click()}
+                          onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+                          onDrop={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const file = e.dataTransfer.files?.[0];
+                            if (file) handleBlastFileSelect(file);
+                          }}
+                        >
+                          <ImageIcon size={22} color="var(--primary-color, #2563eb)" />
+                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            Klik untuk pilih file atau drag & drop ke sini
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary,#64748b)' }}>
+                            Gambar (JPG, PNG), Dokumen (PDF, XLSX, DOCX), Video, Audio (Maks. 25MB)
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <input
+                          type="url"
+                          placeholder="https://example.com/gambar.jpg atau dokumen.pdf"
+                          value={attachmentUrl}
+                          onChange={e => setAttachmentUrl(e.target.value)}
+                          disabled={isBlasting}
+                          style={{
+                            flex: 1,
+                            padding: '0.5rem 0.65rem',
+                            borderRadius: 6,
+                            border: '1px solid var(--border-color,#cbd5e1)',
+                            background: 'var(--bg-card,#fff)',
+                            color: 'var(--text-primary)',
+                            fontSize: '0.85rem',
+                            outline: 'none',
+                          }}
+                        />
+                        {attachmentUrl && (
+                          <button
+                            type="button"
+                            className="blast-attachment-remove-btn"
+                            onClick={() => setAttachmentUrl('')}
+                            disabled={isBlasting}
+                            title="Hapus URL"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>
+                        Masukkan direct URL file media publik yang dapat diakses langsung.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="form-group">
-                <label htmlFor="blast-msg">Pesan</label>
+                <label htmlFor="blast-msg">
+                  Pesan {attachmentFile || attachmentUrl.trim() ? '(akan jadi Caption media)' : ''}
+                  {(!attachmentFile && !attachmentUrl.trim()) && <span style={{ color: '#ef4444' }}> *</span>}
+                </label>
                 <textarea
                   id="blast-msg"
-                  required
+                  required={!attachmentFile && !attachmentUrl.trim()}
                   disabled={isBlasting}
                   value={blastMessage}
                   onChange={e => setBlastMessage(e.target.value)}
-                  placeholder="Halo {{name}}, ini pengumuman penting dari kami."
-                  rows={5}
+                  placeholder={
+                    attachmentFile || attachmentUrl.trim()
+                      ? "Caption media (opsional). Gunakan {{name}} untuk nama penerima..."
+                      : "Halo {{name}}, ini pengumuman penting dari kami."
+                  }
+                  rows={4}
                   style={{ width: '100%', padding: '0.625rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary,#1e293b)', fontSize: '0.95rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit' }}
                 />
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>
-                  Gunakan <code style={{ background: 'rgba(0,0,0,0.06)', padding: '0 0.3rem', borderRadius: 3 }}>{'{{name}}'}</code> untuk menyisipkan nama penerima.
+                  Gunakan <code style={{ background: 'rgba(0,0,0,0.06)', padding: '0 0.3rem', borderRadius: 3 }}>{'{{name}}'}</code> untuk menyisipkan nama penerima secara otomatis.
                 </p>
               </div>
               <div className="form-group">
@@ -1718,36 +1975,126 @@ export function Contacts() {
                   onChange={e => setBlastDelay(Number(e.target.value))}
                   style={{ width: '100%', padding: '0.625rem', borderRadius: 6, border: '1px solid var(--border-color,#cbd5e1)', background: 'var(--bg-card,#fff)', color: 'var(--text-primary)', fontSize: '0.9rem', outline: 'none' }}
                 />
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>Rekomendasi: 3000ms. Jeda terlalu pendek berisiko akun WA dibatasi.</p>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary,#94a3b8)', marginTop: '0.35rem' }}>Rekomendasi: minimal 5000ms - 8000ms. Jeda terlalu pendek berisiko akun dibatasi WhatsApp.</p>
               </div>
 
-              {/* Progress bar */}
+              {/* Progress bar with live detailed feedback */}
               {blastProgress && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary,#64748b)', marginBottom: '0.35rem' }}>
-                    <span>Mengirim...</span>
-                    <span>{blastProgress.done}/{blastProgress.total}</span>
+                <div style={{
+                  marginBottom: '1.25rem',
+                  padding: '1rem',
+                  borderRadius: 8,
+                  background: 'var(--bg-body, #f8fafc)',
+                  border: '1px solid var(--border-color, #e2e8f0)',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {blastProgress.done < blastProgress.total
+                        ? `Sedang mengirim ke: ${blastProgress.currentName || 'Penerima'}...`
+                        : 'Selesai memproses seluruh pesan!'}
+                    </span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#16a34a' }}>
+                      {blastProgress.done} / {blastProgress.total}
+                    </span>
                   </div>
-                  <div style={{ height: 6, background: 'var(--bg-body,#f1f5f9)', borderRadius: 9999 }}>
-                    <div style={{ height: '100%', background: '#16a34a', borderRadius: 9999, width: `${(blastProgress.done / blastProgress.total) * 100}%`, transition: 'width 0.3s' }} />
+
+                  <div style={{ height: 8, background: '#e2e8f0', borderRadius: 9999, overflow: 'hidden', marginBottom: '0.75rem' }}>
+                    <div
+                      style={{
+                        height: '100%',
+                        background: 'linear-gradient(90deg, #2563eb, #16a34a)',
+                        borderRadius: 9999,
+                        width: `${(blastProgress.done / blastProgress.total) * 100}%`,
+                        transition: 'width 0.3s ease',
+                      }}
+                    />
                   </div>
+
+                  <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.78rem' }}>
+                    <span style={{ padding: '0.2rem 0.5rem', background: 'rgba(22, 163, 74, 0.1)', color: '#16a34a', borderRadius: 4, fontWeight: 600 }}>
+                      ✅ Berhasil: {blastProgress.sent}
+                    </span>
+                    {blastProgress.failed > 0 && (
+                      <span style={{ padding: '0.2rem 0.5rem', background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', borderRadius: 4, fontWeight: 600 }}>
+                        ❌ Gagal: {blastProgress.failed}
+                      </span>
+                    )}
+                    <span style={{ padding: '0.2rem 0.5rem', background: 'rgba(100, 116, 139, 0.1)', color: 'var(--text-secondary)', borderRadius: 4, marginLeft: 'auto' }}>
+                      Jeda: {blastDelay}ms
+                    </span>
+                  </div>
+
+                  {blastProgress.lastError && (
+                    <div style={{
+                      marginTop: '0.65rem',
+                      padding: '0.5rem 0.75rem',
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      borderRadius: 6,
+                      color: '#b91c1c',
+                      fontSize: '0.78rem',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '0.4rem',
+                      wordBreak: 'break-word',
+                    }}>
+                      <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>⚠️</span>
+                      <div>
+                        <strong>Error Terakhir:</strong> {blastProgress.lastError}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
               <div className="modal-actions">
-                <button type="button" className="btn-cancel" onClick={() => setIsBlastOpen(false)} disabled={isBlasting}>Batal</button>
-                <button
-                  type="submit"
-                  className="btn-submit"
-                  disabled={isBlasting || !blastMessage.trim() || !selectedSession}
-                  style={{ background: isBlasting ? undefined : '#16a34a' }}
-                >
-                  {isBlasting ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
-                  {isBlasting
-                    ? blastProgress ? `Mengirim ${blastProgress.done}/${blastProgress.total}...` : 'Mengirim...'
-                    : `Kirim ke ${blastMode === 'group' ? (selectedGroupMemberIds.length > 0 ? selectedGroupMemberIds.length : (groups.find(g => g.id === blastGroupId)?.memberCount ?? 0)) : selectedContactIds.length} Penerima`
-                  }
-                </button>
+                {isBlasting ? (
+                  <button
+                    type="button"
+                    onClick={handleStopBlast}
+                    style={{
+                      flex: 1,
+                      padding: '0.75rem 1rem',
+                      background: '#ef4444',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 2px 4px rgba(239, 68, 68, 0.2)',
+                    }}
+                  >
+                    <span>⏹️</span>
+                    <span>Hentikan Blast Sekarang</span>
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-cancel"
+                      onClick={() => {
+                        setIsBlastOpen(false);
+                        setBlastProgress(null);
+                      }}
+                    >
+                      {blastProgress && (blastProgress.failed > 0 || blastProgress.done === blastProgress.total) ? 'Tutup' : 'Batal'}
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn-submit"
+                      disabled={(!blastMessage.trim() && !attachmentFile && !attachmentUrl.trim()) || !selectedSession}
+                      style={{ background: '#16a34a' }}
+                    >
+                      <Send size={16} />
+                      {`Kirim ke ${blastMode === 'group' ? (selectedGroupMemberIds.length > 0 ? selectedGroupMemberIds.length : (groups.find(g => g.id === blastGroupId)?.memberCount ?? 0)) : selectedContactIds.length} Penerima`}
+                    </button>
+                  </>
+                )}
               </div>
             </form>
           </div>

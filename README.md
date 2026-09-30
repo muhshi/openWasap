@@ -1,19 +1,18 @@
 <p align="center">
-  <img src="docs/logo/openwa_logo.webp" alt="OpenWA Logo" width="180"/>
+  <img src="docs/logo/openwa_logo.webp" alt="OpenWA Logo" width="200"/>
 </p>
 
 <h1 align="center">OpenWA</h1>
 <p align="center">
-  <strong>Enterprise WhatsApp API Gateway, Contact Management & Smart Broadcasting Platform</strong>
+  <strong>Open Source WhatsApp API Gateway</strong>
 </p>
 
 <p align="center">
-  <a href="#-fitur-utama">Fitur Utama</a> •
+  <a href="#-features">Features</a> •
   <a href="#-quick-start">Quick Start</a> •
-  <a href="#-deployment-production">Deploy Production</a> •
-  <a href="#-konfigurasi-env">Konfigurasi .env</a> •
-  <a href="#-api-examples">API Examples</a> •
-  <a href="#-changelog">Changelog</a>
+  <a href="#-documentation">Docs</a> •
+  <a href="#-api-examples">API</a> •
+  <a href="#-contributing">Contributing</a>
 </p>
 
 <p align="center">
@@ -21,310 +20,289 @@
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"/>
   <img src="https://img.shields.io/badge/node-22_LTS-brightgreen.svg" alt="Node"/>
   <img src="https://img.shields.io/badge/NestJS-11.x-red.svg" alt="NestJS"/>
-  <img src="https://img.shields.io/badge/React-18.x-61DAFB.svg" alt="React"/>
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker"/>
-  <img src="https://img.shields.io/badge/SSO-SIPETRA%20OAuth2-orange.svg" alt="SSO"/>
-  <img src="https://img.shields.io/badge/Database-Postgres%20%7C%20MySQL%20%7C%20SQLite-blueviolet.svg" alt="Database"/>
+  <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6.svg" alt="TypeScript"/>
 </p>
 
 ---
 
-## 🌟 Tentang OpenWA
+## ✨ Why OpenWA?
 
-**OpenWA** adalah platform WhatsApp API Gateway dan manajemen kontak mandiri (*self-hosted*) yang dirancang untuk kebutuhan institusi, organisasi, maupun pengembang aplikasi. Dibangun di atas NestJS dan React, OpenWA menggabungkan kestabilan gateway pesan WhatsApp dengan manajemen kontak berbasis Excel, pengelompokan wilayah, Single Sign-On (SSO SIPETRA BPS Demak), isolasi privasi multi-pengguna, serta fitur *Personal Blast* (pengiriman pesan 1-ke-1 massal) yang aman dari banned.
+**OpenWA** is a free, open-source WhatsApp API Gateway designed for developers who need full control over their messaging infrastructure—without vendor lock-in or hidden paywalls.
 
-Arsitektur OpenWA bersifat **pluggable & database-agnostic**: Anda dapat beralih antara SQLite (pengembangan lokal) dan PostgreSQL / MySQL (production) serta media penyimpanan lokal atau S3/MinIO hanya dengan mengubah konfigurasi environment tanpa mengubah kode aplikasi.
+Built on a **pluggable architecture**, OpenWA lets you swap database engines (SQLite/PostgreSQL), storage backends (Local/S3), and cache layers (Memory/Redis) without changing a single line of application code.
 
----
-
-## 🎯 Fitur Utama
-
-### 🔐 1. Autentikasi Terpadu & SSO SIPETRA (BPS Demak)
-- **Login OAuth2 Terintegrasi**: Masuk ke Web Dashboard secara langsung menggunakan akun **SIPETRA** (Single Sign-On BPS Kabupaten Demak) maupun API Key.
-- **Sinkronisasi Profil Otomatis**: Identitas nama, email, NIP, dan avatar disinkronkan langsung ke entitas User.
-- **Role-Based Access Control (RBAC)**: Pengelolaan hak akses tingkat `ADMIN` dan `USER`. Admin memiliki visibilitas global, sementara User mengelola sesi, kontak, dan grup miliknya sendiri.
-- **Master API Key**: Dukungan kunci global melalui environment untuk otomasi sistem backend.
-
-### 👥 2. Manajemen Kontak Cerdas & Import Excel
-- **Import Excel (.xlsx / .xls)**: Unggah ribuan kontak langsung dari template spreadsheet dengan pemetaan otomatis.
-- **Standardisasi Nomor Otomatis**: Konversi format nomor lokal (`08xx`, `+62xx`, `62xx`) menjadi format WhatsApp standar internasional (`628xxx@c.us`).
-- **Pengelompokan Berbasis Wilayah**: Pengelompokan kontak berdasarkan metadata wilayah kerja (Kecamatan, Desa/Kelurahan, SLS).
-- **Metadata Anggota Fleksibel**: Setiap anggota grup dapat menyimpan atribut khusus (jabatan, wilayah, status verifikasi, catatan).
-
-### 🔒 3. Isolasi Privasi Data (Private vs Shared)
-- **Multi-Tenancy Ownership**: Setiap kontak dan grup sistem terhubung dengan ID pemilik pembuatnya (`ownerApiKeyId`).
-- **Privacy Toggle**: Pengguna dapat menentukan apakah kontak atau grup bersifat **Privat** (hanya terlihat oleh pemilik) atau **Shared / Publik** (dapat diakses bersama oleh tim).
-- **Bulk Action Toolbar**: Fasilitas seleksi banyak baris (*multi-select*) untuk mengubah status privasi secara massal atau melakukan penghapusan massal (*bulk delete*).
-
-### 🚀 4. WhatsApp Personal Blast (Broadcasting 1-ke-1)
-- **Personalized Messaging**: Kirim pesan personal langsung ke kontak individual menggunakan template variabel dinamis, seperti `Halo {{name}}, berikut pengingat tugas...`.
-- **Anti-Spam & Anti-Ban Delay**: Konfigurasi jeda interval antar pesan (default 3–5 detik) untuk menjaga keamanan akun WhatsApp.
-- **Targeting Fleksibel**: Kirim pesan ke seluruh anggota grup sistem atau hanya anggota-anggota tertentu yang dipilih dari tabel.
-- **Real-Time Progress Tracking**: Indikator progres pengiriman interaktif dengan status sukses/gagal per nomor tujuan.
-- **Pembuatan WhatsApp Group Otomatis**: Buat grup resmi di WhatsApp Web langsung dari daftar kontak yang dipilih di dashboard.
-
-### 📱 5. Multi-Session WhatsApp Engine
-- **Multi-Session Independen**: Kelola banyak nomor WhatsApp sekaligus dalam satu server tanpa saling tumpang-tindih.
-- **QR Code Web Scanner**: Pindai kode QR untuk menghubungkan sesi WhatsApp langsung dari tampilan dashboard interaktif.
-- **Webhook Real-Time**: Kirim event pesan masuk, status sesi, dan tanda terima pesan (*read receipts*) ke webhook pihak ketiga dengan verifikasi tanda tangan HMAC-SHA256.
-- **Dukungan Media Lengkap**: Kirim dan terima dokumen (PDF, Excel), gambar, audio, stiker, dan video.
-
-### 🐳 6. Smart Production Deployment (`deploy.sh`)
-- **Selective Docker Build**: Skrip [deploy.sh](file:///d:/Coding/OpenWA/deploy.sh) cerdas yang hanya mem-build ulang image yang terpengaruh perubahan kode (`src/` untuk Backend, `dashboard/` untuk Frontend).
-- **Zero-Downtime Config Update**: Jika hanya dokumentasi atau file konfigurasi `.env` yang berubah, proses build dilewati dan container langsung diperbarui dalam 2 detik.
-- **Pelacakan State (`.deploy_commit`)**: Skrip mengingat commit terakhir yang berhasil di-deploy sehingga diff selalu akurat bahkan setelah `git pull` manual.
-- **Auto Database Initialization**: Service `db-init` di Docker Compose yang otomatis membuat database jika belum tersedia sebelum backend dijalankan.
+|                               |                                                              |
+| ----------------------------- | ------------------------------------------------------------ |
+| 🔓 **100% Open Source**       | No licensing fees, no feature locks, full source code access |
+| 🏗️ **Pluggable Architecture** | Swap adapters for database, storage, and cache via config    |
+| 🖥️ **Full Dashboard**         | Modern React UI for session, webhook, and API key management |
+| 🔹 **Multi-Session Ready**    | Run multiple WhatsApp sessions concurrently on one instance  |
+| 🐳 **Docker Native**          | Production-ready with zero configuration                     |
+| 🔗 **n8n Integration**        | Community nodes for workflow automation                      |
 
 ---
 
-## 🏗️ Arsitektur Sistem & Tech Stack
+## 🎯 Features
 
-```mermaid
-graph TD
-  User[Pengguna / Petugas] -->|Browser| Nginx[Nginx Reverse Proxy & Static Dashboard :2886]
-  ClientApp[Aplikasi Pihak Ketiga / n8n] -->|REST API & Webhooks| API[OpenWA Backend API :2785]
-  
-  Nginx -->|Proxy /api & /auth| API
-  
-  subgraph Backend Container
-    API --> Auth[Auth & RBAC Module]
-    API --> SSO[SSO SIPETRA OAuth2]
-    API --> ContactMod[Contact & Group Module]
-    API --> BlastMod[WA Blast Engine]
-    API --> Engine[WhatsApp-Web.js Engine + Chromium]
-  end
+### Core Features
 
-  subgraph Database Ecosystem
-    API --> DB[(PostgreSQL / MySQL / SQLite)]
-    API --> Cache[(Redis Cache - Opsional)]
-    API --> Storage[(Local Volume / MinIO S3)]
-  end
-  
-  SSO -.->|OAuth2 Verification| SIPETRA[Server SIPETRA BPS Demak]
-  Engine -.->|Websocket / Protocol| WA[WhatsApp Servers]
-```
+| Feature       | Status | Description                          |
+| ------------- | ------ | ------------------------------------ |
+| REST API      | ✅     | Full WhatsApp API via HTTP endpoints |
+| Multi-Session | ✅     | Manage multiple WhatsApp accounts    |
+| Webhooks      | ✅     | Real-time events with HMAC signature |
+| Web Dashboard | ✅     | Visual management interface          |
+| API Key Auth  | ✅     | Secure API authentication            |
+| Swagger Docs  | ✅     | Interactive API documentation        |
 
-| Lapisan / Layer | Teknologi yang Digunakan |
-| :--- | :--- |
-| **Backend Framework** | [NestJS 11.x](https://nestjs.com/) (Node.js 22 LTS, TypeScript 5.x) |
-| **Frontend Dashboard** | [React 18](https://react.dev/), Vite, Tailwind CSS, Lucide Icons |
-| **WhatsApp Engine** | [whatsapp-web.js](https://wwebjs.dev/) didukung Headless Chromium |
-| **ORM & Database** | [TypeORM](https://typeorm.io/) mendukung PostgreSQL, MySQL, dan SQLite |
-| **Autentikasi** | API Key Auth + OAuth2 OpenID Connect (SIPETRA BPS Demak) |
-| **Kontainerisasi** | Docker Multi-stage Builds & Docker Compose |
-| **Web Server / Proxy** | Nginx Alpine (Frontend container & API proxy) |
+### Messaging
+
+| Feature           | Status | Description                      |
+| ----------------- | ------ | -------------------------------- |
+| Text Messages     | ✅     | Send/receive text messages       |
+| Media Messages    | ✅     | Images, videos, documents, audio |
+| Message Reactions | ✅     | React to messages with emoji     |
+| Bulk Messaging    | ✅     | Send to multiple recipients      |
+| Message Status    | ✅     | Track delivery and read receipts |
+
+### Advanced
+
+| Feature             | Status | Description                        |
+| ------------------- | ------ | ---------------------------------- |
+| Groups API          | ✅     | Create, manage, and message groups |
+| Channels/Newsletter | ✅     | WhatsApp Channels support          |
+| Labels Management   | ✅     | Organize chats with labels         |
+| Proxy Support       | ✅     | Per-session proxy configuration    |
+| Rate Limiting       | ✅     | Configurable request limits        |
+| CIDR Whitelisting   | ✅     | IP-based access control            |
+| Audit Logging       | ✅     | Track all API operations           |
+
+### Infrastructure
+
+| Feature          | Status | Description                    |
+| ---------------- | ------ | ------------------------------ |
+| SQLite           | ✅     | Zero-config embedded database  |
+| PostgreSQL       | ✅     | Production-grade database      |
+| Redis Cache      | ✅     | Optional performance caching   |
+| S3/MinIO Storage | ✅     | Scalable media storage         |
+| Docker           | ✅     | One-command deployment         |
+| Health Checks    | ✅     | Kubernetes-ready probes        |
+| Data Migration   | ✅     | Export/import between backends |
 
 ---
 
-## 🚀 Quick Start (Pengembangan Lokal)
+## 🚀 Quick Start
 
-### 1. Prasyarat
-- **Node.js**: Versi 20 LTS atau 22 LTS
-- **NPM**: Versi 10+
-- **Git**
-
-### 2. Instalasi & Menjalankan Lokal
+### Option A: Docker (Recommended)
 
 ```bash
-# 1. Clone repository
-git clone https://github.com/muhshi/openWasap.git
-cd openWasap
+# Clone and start
+git clone https://github.com/rmyndharis/OpenWA.git
+cd OpenWA
+docker compose -f docker-compose.dev.yml up -d
 
-# 2. Salin template konfigurasi
-cp .env.example .env
+# Access
+# Dashboard: http://localhost:2886
+# API: http://localhost:2785/api
+# Swagger: http://localhost:2785/api/docs
+```
 
-# 3. Install dependency backend & dashboard
+### Option B: Local Development
+
+```bash
+# Clone repository
+git clone https://github.com/rmyndharis/OpenWA.git
+cd OpenWA
+
+# Install dependencies (includes dashboard)
 npm install
 
-# 4. Jalankan backend dan frontend secara bersamaan (Hot-Reload)
+# Start API + Dashboard (config is auto-generated on first run)
 npm run dev
-```
 
-Aplikasi dapat diakses melalui browser:
-- **Web Dashboard**: [http://localhost:2886](http://localhost:2886) (atau [http://127.0.0.1:8080](http://127.0.0.1:8080) jika menggunakan port default SIPETRA)
-- **REST API Docs (Swagger)**: [http://localhost:2785/api/docs](http://localhost:2785/api/docs)
-- **Health Check API**: [http://localhost:2785/api/health](http://localhost:2785/api/health)
-
----
-
-## 🏭 Deployment Production (Server Ubuntu / Debian)
-
-Untuk menjalankan OpenWA di server production menggunakan Docker dan database PostgreSQL / MySQL eksternal, gunakan skrip otomatisasi yang disediakan:
-
-### 1. Persiapan Server
-Pastikan Docker dan Docker Compose sudah terpasang di server Anda:
-```bash
-docker --version
-docker compose version
-```
-
-### 2. Konfigurasi Environment Production
-Salin `.env.example` ke `.env` di server Anda:
-```bash
-cp .env.example .env
-nano .env
-```
-Sesuaikan konfigurasi database server dan kredensial SIPETRA Anda.
-
-### 3. Jalankan Smart Deploy Script
-Gunakan skrip [deploy.sh](file:///d:/Coding/OpenWA/deploy.sh) untuk deployment cerdas:
-
-```bash
-# Berikan izin eksekusi pada skrip
-chmod +x deploy.sh
-
-# Jalankan deploy cerdas (otomatis mendeteksi perubahan kode)
-./deploy.sh
-```
-
-#### Opsi Perintah Deploy:
-| Perintah | Fungsi |
-| :--- | :--- |
-| `./deploy.sh` | Deploy cerdas: hanya build image jika kode service terkait berubah di Git |
-| `./deploy.sh backend` | Paksa build hanya service Backend (`openwa`) |
-| `./deploy.sh dashboard` | Paksa build hanya service Dashboard (`openwa-dashboard`) |
-| `./deploy.sh --build` | Paksa build kedua service dengan cache |
-| `./deploy.sh --force` | Paksa rebuild seluruh layer tanpa cache (`--no-cache`) |
-| `./deploy.sh -y` | Menjalankan proses secara non-interaktif (cocok untuk CI/CD) |
-
----
-
-## ⚙️ Konfigurasi Environment (`.env`)
-
-Berikut adalah parameter konfigurasi penting yang dapat Anda sesuaikan di file `.env`:
-
-```env
-# ===== PORT APLIKASI =====
-API_PORT=2785
-DASHBOARD_PORT=2886
-
-# ===== DATABASE (PostgreSQL / MySQL / SQLite) =====
-DATABASE_TYPE=postgres               # Pilihan: postgres | mysql | sqlite
-DATABASE_HOST=10.133.21.24           # IP atau hostname database
-DATABASE_PORT=5433                   # Port database (5432 / 5433 untuk Postgres, 3306 untuk MySQL)
-DATABASE_NAME=openwa                 # Nama database (akan dibuat otomatis oleh db-init jika belum ada)
-DATABASE_USERNAME=bpsdemak
-DATABASE_PASSWORD=rahasia_database
-DATABASE_SYNCHRONIZE=true            # True untuk migrasi otomatis aman
-
-# ===== DOCKER NETWORK =====
-# Hubungkan ke network container database yang sudah ada
-EXTERNAL_NETWORK=postgres-stack_ai_net
-
-# ===== SSO SIPETRA (BPS DEMAK) =====
-SIPETRA_CLIENT_ID=019fff3b-0a53-702d-93de-xxxxxxxxx
-SIPETRA_CLIENT_SECRET=kunci_rahasia_client_sipetra
-SIPETRA_REDIRECT_URI=http://127.0.0.1:8080/auth/sipetra/callback
-SIPETRA_BASE_URL=https://bpsdemak.com
-DASHBOARD_URL=http://127.0.0.1:8080
-
-# ===== ENGINE WHATSAPP =====
-ENGINE_TYPE=whatsapp-web.js
-SESSION_DATA_PATH=./data/sessions
-PUPPETEER_HEADLESS=true
+# Access
+# Dashboard: http://localhost:2886
+# API: http://localhost:2785/api
+# Swagger: http://localhost:2785/api/docs
 ```
 
 ---
 
-## 📡 Contoh Penggunaan REST API
+## 🏭 Production Deployment
 
-### 1. Membuat & Memulai Sesi WhatsApp
+For production, use the main `docker-compose.yml` with optional services:
+
 ```bash
-# Buat sesi baru
+# Basic production (SQLite, local storage)
+docker compose up -d
+
+# With PostgreSQL database
+docker compose --profile postgres up -d
+
+# Full stack (PostgreSQL, Redis, Dashboard, Traefik)
+docker compose --profile full up -d
+```
+
+| Profile          | Services              |
+| ---------------- | --------------------- |
+| `postgres`       | PostgreSQL database   |
+| `redis`          | Redis cache           |
+| `minio`          | S3-compatible storage |
+| `with-dashboard` | Web dashboard         |
+| `with-proxy`     | Traefik reverse proxy |
+| `full`           | All services above    |
+
+> **Development vs Production**
+>
+> - Development (`docker-compose.dev.yml`): SQLite, local storage, both API & Dashboard included
+> - Production (`docker-compose.yml`): Configurable database, profiles for optional services
+
+## 🔌 Ports
+
+| Service   | Port            | Description              |
+| --------- | --------------- | ------------------------ |
+| API       | `2785`          | REST API endpoints       |
+| Dashboard | `2886`          | Web management interface |
+| Swagger   | `2785/api/docs` | Interactive API docs     |
+
+---
+
+## 📡 API Examples
+
+### Create a Session
+
+```bash
 curl -X POST http://localhost:2785/api/sessions \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
-  -d '{"name": "sesi-layanan-demak"}'
+  -d '{"name": "my-bot"}'
+```
 
-# Dapatkan QR Code untuk pairing
+### Start Session & Get QR Code
+
+```bash
+# Start the session
+curl -X POST http://localhost:2785/api/sessions/{sessionId}/start \
+  -H "X-API-Key: YOUR_API_KEY"
+
+# Get QR code (scan with WhatsApp)
 curl http://localhost:2785/api/sessions/{sessionId}/qr \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
-### 2. Mengirim Pesan Teks
+### Send a Message
+
 ```bash
 curl -X POST http://localhost:2785/api/sessions/{sessionId}/messages/send-text \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{
-    "chatId": "6281234567890@c.us",
-    "text": "Halo! Ini adalah notifikasi resmi dari OpenWA."
+    "chatId": "628123456789@c.us",
+    "text": "Hello from OpenWA!"
   }'
 ```
 
-### 3. Personal Blast ke Anggota Grup Kontak
+### Setup Webhook
+
 ```bash
-curl -X POST http://localhost:2785/api/contact-groups/{groupId}/blast \
+curl -X POST http://localhost:2785/api/sessions/{sessionId}/webhooks \
   -H "Content-Type: application/json" \
   -H "X-API-Key: YOUR_API_KEY" \
   -d '{
-    "sessionId": "sesi-layanan-demak",
-    "message": "Halo Bapak/Ibu {{name}}, dimohon untuk segera melengkapi data survei.",
-    "delayMs": 4000
+    "url": "https://your-server.com/webhook",
+    "events": ["message.received", "session.status"],
+    "secret": "your-hmac-secret"
   }'
 ```
 
 ---
 
-## 📁 Struktur Direktori Proyek
+## 🛠 Tech Stack
+
+| Layer         | Technology              |
+| ------------- | ----------------------- |
+| **Runtime**   | Node.js 22 LTS          |
+| **Framework** | NestJS 11.x             |
+| **Language**  | TypeScript 5.x          |
+| **WA Engine** | whatsapp-web.js         |
+| **Database**  | SQLite / PostgreSQL     |
+| **Cache**     | Redis (optional)        |
+| **Storage**   | Local / S3 / MinIO      |
+| **ORM**       | TypeORM                 |
+| **Container** | Docker + Docker Compose |
+
+---
+
+## 📁 Project Structure
 
 ```
-OpenWA/
-├── dashboard/                  # Aplikasi Frontend (React 18 + Vite)
-│   ├── nginx.conf              # Konfigurasi Nginx Production & Proxy
-│   ├── Dockerfile              # Dockerfile Frontend Multi-Stage
-│   └── src/
-│       ├── pages/              # Halaman Dashboard (Contacts, Sessions, Logs, Login, dll.)
-│       └── services/           # Service komunikasi REST API & state
-├── src/                        # Backend API (NestJS 11)
-│   ├── modules/
-│   │   ├── auth/               # Autentikasi, API Key, User Entity & SSO SIPETRA
-│   │   ├── contact/            # Kontak Impor, Grup Sistem, dan Blast Personal
-│   │   ├── session/            # Pengelolaan Sesi WhatsApp & Pairing
-│   │   ├── message/            # Dispatcher Pesan (Teks, Media, Lokasi, dll.)
-│   │   ├── group/              # WhatsApp Groups API
-│   │   └── webhook/            # Pengiriman Webhook Berlangganan
-│   ├── database/
-│   │   └── migrations/         # Migrasi Database Skema Multi-Dialect
-│   └── engine/                 # Implementasi WhatsApp Engine (whatsapp-web.js)
-├── docker-compose.prod.yml     # Konfigurasi Docker Production Multi-Container
-├── docker-compose.dev.yml      # Konfigurasi Docker Development
-├── deploy.sh                   # Skrip Smart Deployment Otomatis
-└── README.md                   # Dokumentasi Utama
+openwa/
+├── src/
+│   ├── main.ts                 # Application entry point
+│   ├── app.module.ts           # Root module
+│   ├── config/                 # Configuration
+│   ├── common/                 # Shared utilities
+│   │   ├── cache/              # Redis caching
+│   │   └── storage/            # File storage (Local/S3)
+│   ├── core/                   # Core systems
+│   │   ├── hooks/              # Plugin hooks
+│   │   └── plugins/            # Plugin system
+│   ├── engine/                 # WhatsApp engine abstraction
+│   └── modules/
+│       ├── session/            # Session management
+│       ├── message/            # Message handling
+│       ├── webhook/            # Webhook management
+│       ├── group/              # Groups API
+│       ├── contact/            # Contacts API
+│       ├── auth/               # API key authentication
+│       ├── infra/              # Infrastructure management
+│       └── health/             # Health checks
+├── dashboard/                  # React web dashboard
+├── docs/                      # Documentation
+├── docker-compose.yml
+├── Dockerfile
+└── package.json
 ```
+
+---
+
+## 📚 Documentation
+
+Comprehensive documentation is available in the `docs/` folder:
+
+| Document                                                | Description                  |
+| ------------------------------------------------------- | ---------------------------- |
+| [Project Overview](./docs/01-project-overview.md)       | Introduction and goals       |
+| [Requirements](./docs/02-requirements-specification.md) | Feature specifications       |
+| [Architecture](./docs/03-system-architecture.md)        | System design                |
+| [Security](./docs/04-security-design.md)                | Security implementation      |
+| [Database](./docs/05-database-design.md)                | Data models and migrations   |
+| [API Spec](./docs/06-api-specification.md)              | Complete API reference       |
+| [Development](./docs/08-development-guidelines.md)      | Coding standards             |
+| [Migration Guide](./docs/14-migration-guide.md)         | Database & storage migration |
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how to get started:
+
+1. **Fork** the repository
+2. **Create** your feature branch (`git checkout -b feature/amazing-feature`)
+3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
+4. **Push** to the branch (`git push origin feature/amazing-feature`)
+5. **Open** a Pull Request
+
+Please read our [Development Guidelines](./docs/08-development-guidelines.md) for coding standards and best practices.
 
 ---
 
 ## 📝 Changelog
 
-### [2026-09-11] — Smart Deployment, SSO SIPETRA Production Setup & PostgreSQL Migration Fixes
+### [2026-09-26]
 
-- **Penanganan Error Konfigurasi SSO & URL Dinamis (`SsoController` & `deploy.sh`)**:
-  - Memperbaiki penanganan konfigurasi SSO yang belum lengkap pada server agar tidak melempar HTTP 500 error mentah (`"SSO configuration is missing."`), melainkan me-redirect kembali ke halaman login dashboard secara ramah dengan penjelasan variabel `.env` yang belum diisi.
-  - Menambahkan resolusi URL dashboard dinamis (`getDashboardUrl`) berbasis header HTTP (`referer`, `x-forwarded-host`/`x-forwarded-proto`) agar redirect tidak salah alamat ke `localhost:8080` pada server produksi.
-  - Menambahkan fallback otomatis `SIPETRA_REDIRECT_URI` (`${dashboardUrl}/auth/sipetra/callback`) dan `SIPETRA_BASE_URL` (`https://bpsdemak.com`).
-  - Menambahkan `env_file: - .env` pada service `openwa` di `docker-compose.prod.yml` untuk memastikan seluruh variabel `.env` terinjeksi ke container.
-  - Menambahkan pengecekan pra-deploy di `deploy.sh` yang memberi peringatan informatif jika variabel kredensial SSO di `.env` belum diisi.
-- **Perbaikan Glitch Infinite Re-render & Toast Stacking (`Contacts.tsx`, `Toast.tsx`, `api.ts`)**:
-  - Mengatasi glitch re-render tanpa henti pada halaman Kontak dengan menstabilkan pemanggilan `loadImportedContacts` dan `loadGroups` menggunakan `useRef` untuk dependensi toast.
-  - Mencegah penumpukan toast error ganda pada `Toast.tsx` dengan filter duplikasi judul toast aktif.
-  - Menambahkan auto-redirect ke `/login` dan pembersihan `sessionStorage` pada `api.ts` jika API backend mengembalikan status 401 Unauthorized.
-- **Selective Docker Build & State Persistence di `deploy.sh`**: Memperbarui skrip deployment agar mendeteksi perubahan git diff secara cerdas (`git diff --name-only`) dengan pelacakan commit deployment terakhir (`.deploy_commit`). Build hanya dijalankan untuk service yang mengalami perubahan kode (hanya Backend jika folder `src/` dsb berubah, hanya Dashboard jika folder `dashboard/` berubah, atau lewati build sepenuhnya jika hanya dokumen/skrip/konfigurasi yang berubah). Mendukung argumen `backend`, `dashboard`, `--build`, `--force`, dan `-y`.
-- **Penamaan Image Konsisten di `docker-compose.prod.yml`**: Menetapkan tag eksplisit `openwa-api:latest` dan `openwa-dashboard:latest` untuk mempermudah pengecekan ketersediaan image di server host.
-- **Konfigurasi & Routing SSO SIPETRA di Production**:
-  - Menambahkan proxy location `/auth/sipetra/` di `dashboard/nginx.conf` agar permintaan login dan callback OAuth2 SIPETRA diteruskan dengan benar ke container backend di lingkungan Docker production.
-  - Meneruskan variabel environment `SIPETRA_CLIENT_ID`, `SIPETRA_CLIENT_SECRET`, `SIPETRA_REDIRECT_URI`, `SIPETRA_BASE_URL`, dan `DASHBOARD_URL` ke container `openwa` di `docker-compose.prod.yml`.
-- **Perbaikan Kompatibilitas Migrasi Database (PostgreSQL)**:
-  - Merevisi 4 file migrasi dari branch `ejay` (`ContactGroupMemberMetadata`, `AddIsSharedToContacts`, `UpdateApiKeyRoleToUser`, `AddUserAndSso`) agar kompatibel penuh dengan PostgreSQL tanpa error tipe data `datetime` dan tanpa perintah `DROP TABLE` untuk menjaga keamanan dan integritas data.
-- **Perbaikan Autentikasi SSO SIPETRA (Fix Token Hashing Bug)**:
-  - Memperbaiki `AuthService.syncSsoUser` agar selalu me-regenerate API key mentah (`rawKey`) yang valid setiap kali user login via SSO dan meng-update hash di database. Mengatasi bug di mana login berulang mengirimkan string hash (`keyHash`) ke URL sehingga ditolak dengan error "Invalid API key".
-  - Memperbaiki `SsoController` agar hanya meneruskan `rawKey` yang valid ke dashboard.
-- **Redesain Tombol & Aset Logo SSO SIPETRA**:
-  - Menambahkan aset resmi logo BPS (`logo_bps.png`) dan logo SIPETRA BPS Demak (`logo_sipetra.png`) ke `dashboard/public` dengan penanganan fallback otomatis.
-  - Mendesain ulang tombol SSO pada halaman Login dengan tile logo berlatar putih bersih, kontras teks optimal di Light & Dark Mode, efek hover biru BPS (`#0284c7`), dan translasi i18n (`en` & `he`) untuk label login.
-- **Perbaikan Kompilasi Backend & Dashboard**:
-  - Menambahkan import dekorator `Put` di `imported-contact.controller.ts`.
-  - Memperbaiki properti interface `ownerApiKeyId` di `dashboard/src/services/api.ts` dan menghubungkan fungsi bulk update/delete privacy di `dashboard/src/pages/Contacts.tsx`.
+- **Pembaruan Footer & Atribusi Pengembang**: Mengubah atribusi footer aplikasi dan README menjadi "Developed by https://github.com/muhshi for BPS Kabupaten Demak" dengan tautan langsung ke GitHub pengembang.
 
 ### [2026-06-06] — Master API Key, Database Agnostic Columns & Group Member Blast
 
@@ -357,6 +335,7 @@ OpenWA/
   - Mengeksklusikan folder `dashboard/` dari build context backend via root `.dockerignore`.
   - Memindahkan `chown` hanya ke `/app/data` (bukan rekursif ke seluruh `/app`) untuk menghindari operasi chown pada ribuan file `node_modules`.
   - Menghapus key `version` yang obsolete dari `docker-compose.prod.yml`.
+
 - **Fitur Sandbox Multi-Tenancy (Isolasi Data Eksplisit)**: Menambahkan kolom `ownerApiKeyId` ke entitas **Sessions**, **Imported Contacts**, dan **Contact Groups** untuk membatasi akses data. Setiap user (berdasarkan API Key operator/viewer yang login) kini hanya dapat melihat, membuat, mengelola, dan mem-blast sesi/kontak/grup miliknya sendiri secara privat. Peran `ADMIN` tetap memiliki akses global penuh.
 - **Dukungan Database MySQL & Dependensi**: Menginstal paket driver `mysql2` untuk memfasilitasi komunikasi backend NestJS dengan database MySQL secara native.
 - **Konfigurasi Deployment Docker Production**: Menyediakan file `docker-compose.prod.yml` khusus production dan file dokumentasi panduan deployment `docker-setting.md` siap pakai untuk mempermudah deploy di Ubuntu Server dengan dukungan koneksi ke database MySQL eksternal dan perutean proxy internal Nginx.
@@ -371,21 +350,60 @@ OpenWA/
 - **Fitur Blast WA Personal**: Kirim pesan WhatsApp 1-1 (personal/private) ke semua anggota group sekaligus melalui sesi WA aktif. Mendukung variabel `{{name}}` untuk personalisasi nama penerima dan konfigurasi jeda antar pesan (default 3 detik).
 - **Hapus Seeder Data Hardcoded**: Hapus 54 data kontak default yang di-seed otomatis saat server pertama kali boot.
 - **Perbaikan Import**: Import kontak kini hanya menerima file Excel (.xlsx/.xls), tidak lagi CSV.
+### [2026-09-26]
+- **Peningkatan Default Jeda Blast Antar Pesan (5000ms)**: Mengubah konfigurasi default delay pengiriman blast pesan dari 3000ms menjadi 5000ms (5 detik) baik di frontend dashboard maupun backend controller, serta memperbarui petunjuk rekomendasi (5000ms–8000ms) untuk mencegah pemicuan deteksi anti-spam / pembatasan tautan perangkat dari WhatsApp Web saat pengiriman massal.
+- **Tombol Hentikan Blast & Pembatalan Interaktif**: Menambahkan tombol pembatalan aktif *"⏹️ Hentikan Blast Sekarang"* pada modal pengiriman pesan massal (blast) sehingga pengguna dapat menghentikan proses pengiriman sewaktu-waktu tanpa harus menunggu seluruh antrean selesai atau terhalang tombol disabled.
+- **Auto-Abort Sesi Terputus & Deteksi Anti-Spam / Rate-Limit**: Menambahkan mekanisme proteksi penghentian otomatis pada loop blast jika sesi WhatsApp terputus (*disconnected*) atau mengalami 3 kegagalan berturut-turut, melindungi nomor dari flooding error dan memberi tahu pengguna status sesi dengan jelas.
+- **Tampilan Live Error Feedback pada Modal Blast**: Menampilkan rincian error spesifik secara langsung di kartu progres modal blast (*⚠️ Error Terakhir: [Nama] - [Pesan Error]*), sehingga pengguna langsung mengetahui penyebab kegagalan pesan (misal: sesi terputus, timeout, atau format file tidak sesuai).
+- **Sanitasi Injected File Loader WhatsApp (`mediaInfoToFile`)**: Memperbarui skrip patch `scripts/patch-wwebjs.js` untuk membersihkan prefix Data URL Base64 dan whitespace/newline sebelum dieksekusi oleh `window.atob`, serta memberikan default aman untuk mimetype dan filename dokumen agar pengiriman lampiran file (PDF, Dokumen, Media) stabil tanpa error.
+- **Perbaikan Fatal Error Media Memoize Getter & Text Message (Fix 500 / TypeError)**: Memperbaiki bug kritis upstream WhatsApp Web di mana spreading `mediaOptions` menimpa properti `id` pesan menjadi `undefined` yang memicu error `Data passed to getter must include an id property (it's how we memoize) but got undefined`. Menambahkan patch otomatis (`scripts/patch-wwebjs.js`) pada `postinstall`, menambahkan retry loop pada `Msg.get`, mengaktifkan opsi spesifik media (`sendMediaAsDocument: true`), serta menambahkan sanitasi komprehensif nomor telepon Indonesia (`formatChatId`) dan safe fallback ID pada `sendTextMessage` dan `sendMediaMessage` agar tidak crash jika objek pesan belum terindeks seketika.
+- **Live Progress & Feedback Real-time Blast WA**: Menambahkan visualisasi progress bar real-time, status nama penerima yang sedang diproses, serta counter langsung jumlah pesan berhasil (✅) dan gagal (❌) pada modal blast kontak maupun grup. Setelah blast selesai, sistem menampilkan feedback notifikasi menyeluruh (jumlah terkirim & gagal) sebelum modal tertutup otomatis.
+- **Fitur Attachment Media pada Blast WA**: Menambahkan dukungan lampiran media (gambar JPG/PNG/WebP, dokumen PDF/XLSX/DOCX, video, dan audio) pada fitur Blast WA Personal (baik blast Group maupun Kontak Terseleksi) dengan upload file lokal (drag & drop) atau direct URL. Teks pesan secara otomatis menjadi caption dari media yang dilampirkan dengan tetap mempertahankan variabel personalisasi `{{name}}`.
+- **Stabilisasi Pengiriman Blast & Sanitasi Nomor Telepon**: Menambahkan normalisasi otomatis nomor telepon (hanya digit angka `\D`) sebelum penggabungan ke JID `@c.us` untuk mencegah kegagalan pengiriman akibat karakter `+`, spasi, atau tanda minus pada nomor kontak, serta menambahkan logging komprehensif pada blast controller agar status per pesan dapat dipantau di log server secara langsung.
+- **Peningkatan Kapasitas Payload Body Parser (50MB)**: Meningkatkan batas payload Express `json` dan `urlencoded` menjadi 50MB di backend NestJS untuk mendukung transfer lampiran media Base64 berukuran besar tanpa terkena error 413 Payload Too Large.
+- **Sanitasi Base64 Media Adapter WhatsApp**: Menambahkan pembersihan otomatis prefix Data URL (`data:...;base64,`) pada `WhatsAppWebJsAdapter` sebelum diinisialisasi ke `MessageMedia` guna mencegah data media corrupt saat dikirim via engine WhatsApp.
+- **Perbaikan Status Stuck 99% & Optimasi Media Pesan Lama**: Mencegah event `loading_screen` terlambat menurunkan kembali status sesi yang sudah `ready` menjadi `authenticating` baik di backend maupun frontend, menambahkan auto-polling pemulihan pada sesi berstatus pending di dashboard, melewatkan pemanggilan `downloadMedia()` otomatis untuk pesan histori lama saat booting, serta memperbarui teks status UI menjadi *"Menyimpan sesi & sinkronisasi WhatsApp Web"*.
+- **Perbaikan Kedipan (Flicker) Antara Loading dan QR Code**: Menggunakan `qrDataRef` pada `Sessions.tsx` untuk mencegah proses polling QR dan event QR mendadak menimpa status sesi yang sedang `authenticating`, serta memastikan `this.qrCode = null` segera saat event `loading_screen` dipicu di `WhatsAppWebJsAdapter`.
+- **Perbaikan Modal QR Code & Transisi Sesi Ready**: Memperbaiki `fetchQR` di `Sessions.tsx` agar langsung menutup modal QR dan me-refresh daftar sesi saat polling mendeteksi session `ready`, serta menangani fallback pengecekan status saat getQR mengembalikan 400.
+- **Dukungan WebSocket di Vite Dev Server**: Menambahkan konfigurasi proxy `/socket.io` dengan `ws: true` di `dashboard/vite.config.ts` sehingga event real-time Socket.IO terhubung mulus ke backend NestJS pada port 2785 saat pengembangan lokal.
+- **Reduksi Noise Log Sinkronisasi WhatsApp**: Mengubah level log kegagalan unduh media dan quoted message histori pesan lama dari `error` menjadi `debug` di `WhatsAppWebJsAdapter` agar konsol tidak dibanjiri pesan error saat sinkronisasi chat.
+- **Perbaikan Shutdown Hook TypeORM**: Menambahkan properti identifier koneksi `name: 'main'` dan `name: 'data'` pada objek hasil `useFactory` TypeOrmModule di `app.module.ts` untuk mencegah error `Nest could not find DataSource element` saat aplikasi shutdown.
+
+### [2026-09-25]
+- **Indikator Progres Sinkronisasi & Penjelasan Loading Real-time**: Menambahkan event `onLoadingScreen` dari engine WhatsApp Web ke WebSocket (`session.status`) dengan payload `loadingPercent` & `loadingMessage`, serta memperbarui modal QR dan kartu sesi di dashboard agar menampilkan progress bar visual, tahapan proses (verifikasi QR -> unduh chat -> aktivasi koneksi), dan pesan status yang informatif sehingga pengguna memahami alur kerja sinkronisasi.
+- **Perbaikan Stuck di Authenticating & Transisi Ready**: Menambahkan `evalOnNewDoc` polyfill untuk mencegah crash WhatsApp Web pada modul `WAWebConnModel.Conn.serialize()`, menyempurnakan watchdog autentikasi agar mengekstrak identitas sesi secara independen dari DOM/storage WhatsApp Web dan langsung memindahkan status sesi ke `READY`.
+- **Perbaikan Tombol & Lifecycle Sesi Dashboard**: Menambahkan status `authenticating` ke tipe status sesi dan UI card dashboard sehingga menampilkan spinner autentikasi dan tombol `Stop` (bukan `Reconnect` yang memicu error), serta memperbaiki `SessionService.start` agar membersihkan engine lama yang disconnect/gagal sebelum restart.
+- **Perbaikan SSO Login Berulang (Invalid API Key)**: Memperbaiki `AuthService.syncSsoUser` dan `SsoController` agar selalu membuat/merotasi dan mengembalikan `rawKey` (`owa_k1_...`) yang valid ke frontend setiap kali user SSO login ulang (sebelumnya user lama mengembalikan hash SHA-256 yang menyebabkan error double-hash `Invalid API key`).
+- **Optimasi Inisialisasi WhatsApp Engine**: Mengganti `webVersionCache` dari remote GitHub (`raw.githubusercontent.com/.../undefined.html`) menjadi local persistent cache (`/app/data/cache`) guna menghilangkan delay jaringan dan timeout saat startup sesi baru di server.
+- **Peningkatan Konfigurasi Docker & Puppeteer**: Menambahkan `shm_size: '2gb'` pada container Docker `openwa` dan `openwa-api` serta menyertakan flag anti-throttling Chromium (`--disable-dev-shm-usage`, `--disable-background-timer-throttling`, `--disable-backgrounding-occluded-windows`, `--disable-renderer-backgrounding`) agar proses rendering dan sinkronisasi headless tidak membeku (freeze).
+- **Perbaikan Real-time QR Code Modal & Polling Dashboard**: Memperbaiki `useWebSocket` agar subscribe ke room event server dan mendengarkan event `session:qr`, serta memperbaiki `Sessions.tsx` agar langsung membuka modal QR dengan spinner loading saat Start diklik dan tidak menutup modal saat status QR sedang disiapkan (mengatasi race condition frontend).
+
+### [2026-05-26]
+- **Perbaikan DTO Grup**: Menambahkan dekorator class-validator pada DTO di `group.controller.ts` untuk mengatasi error 400 Bad Request.
+- **Fitur Konten Baru (Contacts Manager)**: Menambahkan halaman Kontak terpadu di React Dashboard yang mendukung import kontak dari file CSV/Excel (.xlsx) secara client-side, standardisasi nomor telepon otomatis (`08` -> `62`), serta memicu pembuatan grup di WhatsApp langsung dari daftar kontak yang dipilih.
+- **Dukungan Template & Preload Kontak**: Menambahkan tombol untuk mengunduh template CSV dan Excel dari Contacts Page, serta mem-preload daftar 54 kontak petugas secara default saat halaman dimuat.
+- **Penyimpanan Database Server & CRUD Lengkap (SQLite/MySQL/Postgres)**: Menyimpan data kontak secara persisten ke dalam database server menggunakan ORM TypeORM (SQLite saat pengembangan lokal, dan otomatis menggunakan MySQL atau Postgres saat di-deploy ke server). Menambahkan CRUD lengkap via REST API berupa penambahan kontak baru secara manual, penghapusan kontak satu per satu berdasarkan ID UUID, penghapusan semua kontak dengan konfirmasi dialog, auto-seeder database untuk 54 kontak default pada boot awal, serta mengaktifkan kembali validasi role 'user' untuk membuat grup WhatsApp.
+- **Pagination Kontak**: Menambahkan fitur pembagian halaman (pagination) yang responsif untuk tabel kontak guna mengelola daftar kontak berskala besar dengan lancar.
+- **Peningkatan Ketahanan & Penanganan Error Pembuatan Grup (Fix 502/ECONNREFUSED & findImpl error)**: Mengganti seluruh implementasi `createGroup` dengan pemanggilan langsung ke `pupPage.evaluate` → `WAWebGroupCreateJob.createGroup`, sepenuhnya mem-bypass kode pustaka `whatsapp-web.js` yang rusak akibat pembaruan WhatsApp Web. Ini mengatasi 3 titik kegagalan: (1) loop `queryWidExists` per-peserta yang lambat (N+1), (2) crash `WAWebApiContact.getPhoneNumber` pada peserta LID, dan (3) crash `Chat.find → this.findImpl is not a function` saat mengirim undangan privat. Pembuatan grup kini jauh lebih cepat dan stabil.
 
 ---
 
-## 📄 Lisensi
+## 📄 License
 
-Proyek ini berlisensi di bawah **MIT License** – bebas digunakan untuk kebutuhan personal maupun institusi/komersial.
+This project is licensed under the **MIT License** – free for personal and commercial use.
 
-Lihat [LICENSE](./LICENSE) untuk informasi lebih lanjut.
+See [LICENSE](./LICENSE) for details.
 
 ---
 
 <div align="center">
 
-**OpenWA** – Open Source WhatsApp Gateway, Contact Manager & Smart Broadcasting
+**OpenWA** – Free, Open Source WhatsApp API Gateway
 
-<sub>Dikembangkan dengan ❤️ untuk kemudahan komunikasi dan integrasi data BPS Kabupaten Demak</sub>
+[📖 Documentation](./docs/README.md) · [🔌 API Docs](http://localhost:2785/api/docs) · [🐛 Report Bug](https://github.com/rmyndharis/OpenWA/issues) · [💡 Request Feature](https://github.com/rmyndharis/OpenWA/issues)
+
+<br/>
+
+<sub>Developed by <a href="https://github.com/muhshi">https://github.com/muhshi</a> for BPS Kabupaten Demak</sub>
 
 </div>

@@ -325,10 +325,10 @@ export class AuthService implements OnModuleInit {
         userId: user.id,
       });
     } else {
+      apiKey.name = 'SSO Key - ' + user.name;
       apiKey.keyHash = keyHash;
       apiKey.keyPrefix = keyPrefix;
       apiKey.isActive = true;
-      apiKey.name = 'SSO Key - ' + user.name;
     }
     await this.apiKeyRepository.save(apiKey);
     (apiKey as any).rawKey = rawKey;

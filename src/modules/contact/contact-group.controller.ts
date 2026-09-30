@@ -9,14 +9,16 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty, ApiSecurity } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody, ApiProperty, ApiPropertyOptional, ApiSecurity } from '@nestjs/swagger';
 import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsObject, Matches, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ContactGroupService } from './contact-group.service';
 import { SessionService } from '../session/session.service';
 import { CurrentApiKey } from '../auth/decorators/auth.decorators';
 import { ApiKey } from '../auth/entities/api-key.entity';
+import { MediaInput } from '../../engine/interfaces/whatsapp-engine.interface';
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
@@ -65,16 +67,38 @@ class AddMembersDto {
   contactIds: string[];
 }
 
+export class BlastAttachmentDto {
+  @ApiPropertyOptional({ description: 'URL media (http/https)' })
+  @IsOptional()
+  @IsString()
+  url?: string;
+
+  @ApiPropertyOptional({ description: 'Base64 encoded media data' })
+  @IsOptional()
+  @IsString()
+  base64?: string;
+
+  @ApiPropertyOptional({ description: 'Media MIME type (misal: image/jpeg, application/pdf)' })
+  @IsOptional()
+  @IsString()
+  mimetype?: string;
+
+  @ApiPropertyOptional({ description: 'Nama file media (misal: brosur.pdf)' })
+  @IsOptional()
+  @IsString()
+  filename?: string;
+}
+
 class BlastMessageDto {
   @ApiProperty({ description: 'Session ID WhatsApp yang aktif', example: 'default' })
   @IsString()
   @IsNotEmpty()
   sessionId: string;
 
-  @ApiProperty({ description: 'Pesan yang akan dikirim. Gunakan {{name}} untuk nama penerima', example: 'Halo {{name}}, ini adalah pengumuman penting.' })
+  @ApiPropertyOptional({ description: 'Pesan yang akan dikirim / caption media. Gunakan {{name}} untuk nama penerima', example: 'Halo {{name}}, ini adalah pengumuman penting.' })
   @IsString()
-  @IsNotEmpty()
-  message: string;
+  @IsOptional()
+  message?: string;
 
   @ApiProperty({ description: 'Delay antar pesan dalam ms (default: 3000)', required: false, example: 3000 })
   @IsOptional()
@@ -84,6 +108,12 @@ class BlastMessageDto {
   @IsArray()
   @IsOptional()
   memberIds?: string[];
+
+  @ApiPropertyOptional({ description: 'Attachment media (opsional)', type: BlastAttachmentDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BlastAttachmentDto)
+  attachment?: BlastAttachmentDto;
 }
 
 export class ContactWithMetadataDto {
@@ -129,6 +159,8 @@ export class BpsImportDto {
 @ApiSecurity('X-API-Key')
 @Controller('contact-groups')
 export class ContactGroupController {
+  private readonly logger = new Logger(ContactGroupController.name);
+
   constructor(
     private readonly contactGroupService: ContactGroupService,
     private readonly sessionService: SessionService,
@@ -276,35 +308,81 @@ export class ContactGroupController {
       throw new BadRequestException(`Sesi "${dto.sessionId}" tidak ditemukan atau belum READY. Pastikan sesi WhatsApp sudah terhubung.`);
     }
 
+    // Pastikan ada pesan atau attachment
+    if (!dto.message?.trim() && !dto.attachment?.url && !dto.attachment?.base64) {
+      throw new BadRequestException('Pesan teks atau lampiran media harus diisi.');
+    }
+
     // Pastikan user memiliki akses ke group ini
     const members = await this.contactGroupService.getMemberPhones(id, dto.memberIds, apiKey);
     if (members.length === 0) {
       throw new BadRequestException('Group tidak memiliki anggota. Tambahkan kontak ke group terlebih dahulu.');
     }
 
-    const delayMs = dto.delayMs ?? 3000;
+    const delayMs = dto.delayMs ?? 5000;
     const results: Array<{ phone: string; name: string; status: 'sent' | 'failed'; error?: string }> = [];
+
+    this.logger.log(`[Blast] Initiating blast for group ${id} to ${members.length} members (Session: ${dto.sessionId}, Attachment: ${!!dto.attachment})`);
 
     // Kirim pesan secara asinkron (non-blocking)
     void (async () => {
-      for (const member of members) {
+      for (let i = 0; i < members.length; i++) {
+        const member = members[i];
+        let cleanPhone = member.phone.replace(/\D/g, '');
+        while (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
+        if (cleanPhone.startsWith('8')) cleanPhone = '62' + cleanPhone;
+        const chatId = cleanPhone.endsWith('@c.us') ? cleanPhone : `${cleanPhone}@c.us`;
+
         try {
-          const chatId = `${member.phone}@c.us`;
           // Ganti {{name}} dengan nama penerima
-          const personalizedMessage = dto.message.replace(/\{\{name\}\}/g, member.name);
-          await engine.sendTextMessage(chatId, personalizedMessage);
+          const personalizedMessage = (dto.message || '').replace(/\{\{name\}\}/g, member.name);
+
+          this.logger.log(`[Blast ${i + 1}/${members.length}] Sending to ${member.name} (${chatId})...`);
+
+          if (dto.attachment && (dto.attachment.url || dto.attachment.base64)) {
+            const mediaInput: MediaInput = {
+              mimetype: dto.attachment.mimetype || 'application/octet-stream',
+              data: dto.attachment.url || dto.attachment.base64!,
+              filename: dto.attachment.filename,
+              caption: personalizedMessage.trim() || undefined,
+            };
+
+            const mime = (dto.attachment.mimetype || '').toLowerCase();
+            if (mime.startsWith('image/')) {
+              await engine.sendImageMessage(chatId, mediaInput);
+            } else if (mime.startsWith('video/')) {
+              await engine.sendVideoMessage(chatId, mediaInput);
+            } else if (mime.startsWith('audio/')) {
+              await engine.sendAudioMessage(chatId, mediaInput);
+            } else {
+              await engine.sendDocumentMessage(chatId, mediaInput);
+            }
+          } else {
+            await engine.sendTextMessage(chatId, personalizedMessage);
+          }
+
+          this.logger.log(`[Blast ${i + 1}/${members.length}] Sent successfully to ${member.name} (${chatId})`);
           results.push({ phone: member.phone, name: member.name, status: 'sent' });
         } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          this.logger.error(`[Blast ${i + 1}/${members.length}] FAILED sending to ${member.name} (${chatId}): ${errMsg}`);
           results.push({
             phone: member.phone,
             name: member.name,
             status: 'failed',
-            error: err instanceof Error ? err.message : 'Unknown error',
+            error: errMsg,
           });
         }
+
         // Delay antar pesan
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        if (i < members.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
       }
+
+      const totalSent = results.filter(r => r.status === 'sent').length;
+      const totalFailed = results.filter(r => r.status === 'failed').length;
+      this.logger.log(`[Blast] Completed blast for group ${id}. Total: ${members.length}, Sent: ${totalSent}, Failed: ${totalFailed}`);
     })();
 
     return {

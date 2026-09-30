@@ -79,7 +79,7 @@
     "connectionError": "לא ניתן להתחבר לשרת. יש לנסות שוב.",
     "help": "צריך עזרה?",
     "viewDocs": "לצפייה בתיעוד",
-    "footer": "נבנה באהבה על ידי Yudhi Armyndharis וקהילת OpenWA",
+    "footer": "Developed by <link>https://github.com/muhshi</link> for BPS Kabupaten Demak",
     "version": "v{{version}} · {{date}}"
   },
   "dashboard": {

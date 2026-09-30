@@ -197,8 +197,26 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
   async start(id: string): Promise<Session> {
     const session = await this.findOne(id);
 
-    if (this.engines.has(id)) {
-      throw new BadRequestException('Session is already started');
+    const existingEngine = this.engines.get(id);
+    if (existingEngine) {
+      const status = typeof existingEngine.getStatus === 'function' ? existingEngine.getStatus() : null;
+      if (
+        !status ||
+        status === EngineStatus.READY ||
+        status === EngineStatus.INITIALIZING ||
+        status === EngineStatus.AUTHENTICATING ||
+        status === EngineStatus.QR_READY
+      ) {
+        throw new BadRequestException('Session is already started');
+      }
+
+      // If existing engine was disconnected or failed, cleanly destroy it before restarting
+      try {
+        await existingEngine.destroy();
+      } catch {
+        // ignore
+      }
+      this.engines.delete(id);
     }
 
     // Execute hook before starting
@@ -242,7 +260,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     this.engines.set(id, engine);
 
     await engine.initialize({
-      onQRCode: (): void => {
+      onQRCode: (qr: string): void => {
         this.logger.log('QR code generated', {
           sessionId: id,
           action: 'qr_generated',
@@ -251,7 +269,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
         // Execute hook for QR event
         void this.hookManager.execute(
           'session:qr',
-          { sessionId: id },
+          { sessionId: id, qrCode: qr },
           {
             sessionId: id,
             source: 'Engine',
@@ -259,6 +277,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
         );
 
         void this.updateStatus(id, SessionStatus.QR_READY);
+        this.eventsGateway.emitQRCode(id, qr);
       },
       onReady: (phone: string, pushName: string): void => {
         this.logger.log(`Session ready: ${phone}`, {
@@ -357,6 +376,16 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
         if (newStatus) {
           void this.updateStatus(id, newStatus);
         }
+      },
+      onLoadingScreen: (percent: number, message: string): void => {
+        const engine = this.engines.get(id);
+        if (engine && engine.getStatus() === EngineStatus.READY) {
+          return;
+        }
+        this.eventsGateway.emitSessionStatus(id, SessionStatus.AUTHENTICATING, {
+          loadingPercent: percent,
+          loadingMessage: message,
+        });
       },
     });
 
