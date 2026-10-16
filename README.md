@@ -300,6 +300,14 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 
 ## 📝 Changelog
 
+### [2026-10-16]
+
+- **Merge Update dari origin/adit & origin/main**:
+  - Menggabungkan fitur SSO SIPETRA login, perbaikan hashing validasi SSO token, dynamic dashboard URL, dan penambahan logo BPS & SIPETRA.
+  - Memperbarui `webVersionCache` pada `WhatsAppWebJsAdapter` ke stable remote version (`https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html`) untuk memperbaiki masalah autentikasi WhatsApp Web.
+  - Penyesuaian dependensi `archiver` dan `uuid` agar stabil saat kompresi file dan penanganan session.
+  - Integrasi fitur blast delay, tombol stop blast, dan feedback error live dari branch ejay ke basis kode terbaru.
+
 ### [2026-09-26]
 
 - **Pembaruan Footer & Atribusi Pengembang**: Mengubah atribusi footer aplikasi dan README menjadi "Developed by https://github.com/muhshi for BPS Kabupaten Demak" dengan tautan langsung ke GitHub pengembang.
