@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy ONLY lock + manifest — layer cached until these files change
 COPY package.json package-lock.json ./
+COPY scripts ./scripts
 
 # Skip the `postinstall` script (it would try to install the dashboard too)
 RUN npm ci --ignore-scripts
@@ -39,6 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
+COPY scripts ./scripts
 
 # Install production deps only — heavily cached because package.json rarely changes
 RUN npm ci --omit=dev && npm cache clean --force
