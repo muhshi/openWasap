@@ -30,8 +30,11 @@ interface ReconnectState {
 export class SessionService implements OnModuleDestroy, OnModuleInit {
   private readonly logger = createLogger('SessionService');
 
-  // In-memory map of active engine instances
+  // In-memory map of active engine instances (keyed by session UUID)
   private engines: Map<string, IWhatsAppEngine> = new Map();
+
+  // Mapping from session name to session UUID for flexible identifier lookup
+  private sessionNameToId: Map<string, string> = new Map();
 
   // Reconnection state per session
   private reconnectStates: Map<string, ReconnectState> = new Map();
@@ -49,7 +52,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
 
   /**
    * On backend startup, reset all active session statuses to disconnected
-   * because the engines are not running yet after restart
+   * and auto-reconnect sessions that have saved credentials (phone number is set)
    */
   async onModuleInit(): Promise<void> {
     const activeStatuses = [
@@ -58,6 +61,13 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
       SessionStatus.QR_READY,
       SessionStatus.AUTHENTICATING,
     ];
+
+    // Find sessions that were active or have an existing phone associated
+    const previouslyActiveSessions = await this.sessionRepository.find({
+      where: [
+        { status: In(activeStatuses) },
+      ],
+    });
 
     const result = await this.sessionRepository.update(
       { status: In(activeStatuses) },
@@ -69,6 +79,22 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
         action: 'startup_reset',
         affected: result.affected,
       });
+    }
+
+    // Auto-reconnect sessions that were previously ready or have registered phone credentials
+    const sessionsToRestart = (previouslyActiveSessions || []).filter(s => !!s.phone);
+    if (sessionsToRestart.length > 0) {
+      this.logger.log(`[AutoStart] Found ${sessionsToRestart.length} session(s) with saved credentials to auto-reconnect`);
+      let delayMs = 3000;
+      for (const s of sessionsToRestart) {
+        setTimeout(() => {
+          this.logger.log(`[AutoStart] Auto-starting session: ${s.name} (${s.id})`);
+          void this.start(s.id).catch(err => {
+            this.logger.warn(`[AutoStart] Failed to auto-start session ${s.name}: ${err?.message || err}`);
+          });
+        }, delayMs);
+        delayMs += 5000; // Stagger startups by 5 seconds
+      }
     }
   }
 
@@ -82,6 +108,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
       await engine.destroy();
     }
     this.engines.clear();
+    this.sessionNameToId.clear();
 
     // Clear all reconnect timers
     for (const [, state] of this.reconnectStates) {
@@ -138,10 +165,19 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     return this.sessionRepository.find(findOptions);
   }
 
-  async findOne(id: string, apiKey?: ApiKey): Promise<Session> {
-    const session = await this.sessionRepository.findOne({ where: { id } });
+  async findOne(idOrName: string, apiKey?: ApiKey): Promise<Session> {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idOrName);
+    let session: Session | null = null;
+
+    if (isUuid) {
+      session = await this.sessionRepository.findOne({ where: { id: idOrName } });
+    }
     if (!session) {
-      throw new NotFoundException(`Session with id '${id}' not found`);
+      session = await this.sessionRepository.findOne({ where: { name: idOrName } });
+    }
+
+    if (!session) {
+      throw new NotFoundException(`Session '${idOrName}' not found`);
     }
     if (apiKey && apiKey.role !== ApiKeyRole.ADMIN && session.ownerApiKeyId !== apiKey.id) {
       throw new UnauthorizedException('You do not have access to this session');
@@ -150,15 +186,12 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
   }
 
   async findByName(name: string): Promise<Session> {
-    const session = await this.sessionRepository.findOne({ where: { name } });
-    if (!session) {
-      throw new NotFoundException(`Session with name '${name}' not found`);
-    }
-    return session;
+    return this.findOne(name);
   }
 
-  async delete(id: string): Promise<void> {
-    const session = await this.findOne(id);
+  async delete(idOrName: string): Promise<void> {
+    const session = await this.findOne(idOrName);
+    const id = session.id;
 
     // Cancel any reconnection attempts
     this.cancelReconnect(id);
@@ -168,6 +201,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     if (engine) {
       await engine.destroy();
       this.engines.delete(id);
+      this.sessionNameToId.delete(session.name);
     }
 
     // Execute hook BEFORE delete so plugins can access session data
@@ -194,14 +228,14 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     });
   }
 
-  async start(id: string): Promise<Session> {
-    const session = await this.findOne(id);
+  async start(idOrName: string): Promise<Session> {
+    const session = await this.findOne(idOrName);
+    const id = session.id;
 
     const existingEngine = this.engines.get(id);
     if (existingEngine) {
       const status = typeof existingEngine.getStatus === 'function' ? existingEngine.getStatus() : null;
       if (
-        !status ||
         status === EngineStatus.READY ||
         status === EngineStatus.INITIALIZING ||
         status === EngineStatus.AUTHENTICATING ||
@@ -217,6 +251,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
         // ignore
       }
       this.engines.delete(id);
+      this.sessionNameToId.delete(session.name);
     }
 
     // Execute hook before starting
@@ -229,7 +264,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
       },
     );
 
-    // Initialize reconnect state
+    // Initialize reconnect state with resilient defaults (up to 30 attempts)
     const config = session.config as {
       maxReconnectAttempts?: number;
       reconnectBaseDelay?: number;
@@ -237,7 +272,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     this.reconnectStates.set(id, {
       attempts: 0,
       timer: null,
-      maxAttempts: config?.maxReconnectAttempts ?? 5,
+      maxAttempts: config?.maxReconnectAttempts ?? 30,
       baseDelay: config?.reconnectBaseDelay ?? 5000,
     });
 
@@ -252,12 +287,16 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
       proxyEnabled: !!session.proxyUrl,
     });
 
+    // Mark session as initializing upfront so that asynchronous transitions to qr_ready or ready are not overwritten
+    await this.updateStatus(id, SessionStatus.INITIALIZING);
+
     const engine = this.engineFactory.create({
       sessionId: session.name,
       proxyUrl: session.proxyUrl || undefined,
       proxyType: session.proxyType || undefined,
     });
     this.engines.set(id, engine);
+    this.sessionNameToId.set(session.name, id);
 
     await engine.initialize({
       onQRCode: (qr: string): void => {
@@ -388,8 +427,6 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
         });
       },
     });
-
-    await this.updateStatus(id, SessionStatus.INITIALIZING);
   }
 
   private scheduleReconnect(id: string, session: Session): void {
@@ -405,8 +442,8 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
       return;
     }
 
-    // Exponential backoff: baseDelay * 2^attempts (with jitter)
-    const delay = state.baseDelay * Math.pow(2, state.attempts) + Math.random() * 1000;
+    // Smarter backoff capped at 30 seconds with jitter
+    const delay = Math.min(state.baseDelay * Math.pow(1.5, state.attempts), 30000) + Math.random() * 1000;
     state.attempts++;
 
     this.logger.log(
@@ -426,11 +463,16 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
 
   private async executeReconnect(id: string, session: Session, state: ReconnectState): Promise<void> {
     try {
-      // Clean up old engine
+      // Clean up old engine safely
       const oldEngine = this.engines.get(id);
       if (oldEngine) {
-        await oldEngine.destroy();
+        try {
+          await oldEngine.destroy();
+        } catch {
+          // ignore
+        }
         this.engines.delete(id);
+        this.sessionNameToId.delete(session.name);
       }
 
       // Re-initialize
@@ -455,8 +497,9 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     this.reconnectStates.delete(id);
   }
 
-  async stop(id: string): Promise<Session> {
-    const session = await this.findOne(id);
+  async stop(idOrName: string): Promise<Session> {
+    const session = await this.findOne(idOrName);
+    const id = session.id;
 
     // Cancel any reconnection attempts
     this.cancelReconnect(id);
@@ -466,6 +509,7 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     if (engine) {
       await engine.disconnect();
       this.engines.delete(id);
+      this.sessionNameToId.delete(session.name);
     }
 
     this.logger.log(`Session stopped: ${session.name}`, {
@@ -476,9 +520,17 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     return this.findOne(id);
   }
 
-  async getQRCode(id: string): Promise<{ qrCode: string; status: SessionStatus }> {
-    const session = await this.findOne(id);
-    const engine = this.engines.get(id);
+  async getQRCode(idOrName: string): Promise<{ qrCode: string; status: SessionStatus }> {
+    const session = await this.findOne(idOrName);
+    const id = session.id;
+    let engine = this.engines.get(id);
+
+    // If engine is not running and session is disconnected/created, auto-start it for seamless QR retrieval
+    if (!engine && (session.status === SessionStatus.DISCONNECTED || session.status === SessionStatus.CREATED)) {
+      this.logger.log(`Auto-starting session '${session.name}' for QR code retrieval`);
+      await this.start(id);
+      engine = this.engines.get(id);
+    }
 
     if (!engine) {
       throw new BadRequestException('Session is not started. Call POST /sessions/:id/start first.');
@@ -499,13 +551,21 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     };
   }
 
-  getEngine(id: string): IWhatsAppEngine | undefined {
-    return this.engines.get(id);
+  getEngine(idOrName: string): IWhatsAppEngine | undefined {
+    let engine = this.engines.get(idOrName);
+    if (!engine) {
+      const canonicalId = this.sessionNameToId.get(idOrName);
+      if (canonicalId) {
+        engine = this.engines.get(canonicalId);
+      }
+    }
+    return engine;
   }
 
-  async getGroups(id: string): Promise<{ id: string; name: string }[]> {
-    await this.findOne(id); // Verify session exists
-    const engine = this.engines.get(id);
+  async getGroups(idOrName: string): Promise<{ id: string; name: string }[]> {
+    const session = await this.findOne(idOrName); // Verify session exists
+    const id = session.id;
+    const engine = this.getEngine(id);
 
     if (!engine) {
       throw new BadRequestException('Session is not started');
@@ -573,7 +633,9 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
   /**
    * Check if session is currently active (engine running)
    */
-  isActive(id: string): boolean {
-    return this.engines.has(id);
+  isActive(idOrName: string): boolean {
+    if (this.engines.has(idOrName)) return true;
+    const canonicalId = this.sessionNameToId.get(idOrName);
+    return canonicalId ? this.engines.has(canonicalId) : false;
   }
 }

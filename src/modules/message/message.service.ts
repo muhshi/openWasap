@@ -23,11 +23,14 @@ export class MessageService {
   ) {}
 
   async sendText(sessionId: string, dto: SendTextMessageDto): Promise<MessageResponseDto> {
+    const session = await this.sessionService.findOne(sessionId);
+    const resolvedId = session.id;
+
     // Execute hook before sending - plugins can modify or block
     const { continue: shouldContinue, data: hookData } = await this.hookManager.execute(
       'message:sending',
-      { sessionId, input: dto, type: 'text' },
-      { sessionId, source: 'MessageService' },
+      { sessionId: resolvedId, sessionName: session.name, input: dto, type: 'text' },
+      { sessionId: resolvedId, source: 'MessageService' },
     );
 
     if (!shouldContinue) {
@@ -37,10 +40,10 @@ export class MessageService {
     // Use potentially modified input
     const finalDto = (hookData as { input: SendTextMessageDto }).input;
 
-    const engine = this.getEngine(sessionId);
+    const engine = this.getEngine(resolvedId);
 
     // Save message as pending BEFORE sending
-    const message = await this.saveOutgoingMessage(sessionId, {
+    const message = await this.saveOutgoingMessage(resolvedId, {
       chatId: finalDto.chatId,
       body: finalDto.text,
       type: 'text',
@@ -58,8 +61,8 @@ export class MessageService {
       // Execute hook after successful send
       await this.hookManager.execute(
         'message:sent',
-        { sessionId, result, input: finalDto },
-        { sessionId, source: 'MessageService' },
+        { sessionId: resolvedId, result, input: finalDto },
+        { sessionId: resolvedId, source: 'MessageService' },
       );
 
       return {
@@ -74,8 +77,8 @@ export class MessageService {
       // Execute hook on failure
       await this.hookManager.execute(
         'message:failed',
-        { sessionId, error: error instanceof Error ? error.message : String(error), input: finalDto },
-        { sessionId, source: 'MessageService' },
+        { sessionId: resolvedId, error: error instanceof Error ? error.message : String(error), input: finalDto },
+        { sessionId: resolvedId, source: 'MessageService' },
       );
 
       throw error;
@@ -212,11 +215,15 @@ export class MessageService {
     sessionId: string,
     options: GetMessagesOptions = {},
   ): Promise<{ messages: Message[]; total: number }> {
+    const session = await this.sessionService.findOne(sessionId);
     const { chatId, limit = 50, offset = 0 } = options;
 
     const query = this.messageRepository
       .createQueryBuilder('message')
-      .where('message.sessionId = :sessionId', { sessionId })
+      .where('(message.sessionId = :sessionId OR message.sessionId = :sessionName)', {
+        sessionId: session.id,
+        sessionName: session.name,
+      })
       .orderBy('message.createdAt', 'DESC')
       .skip(offset)
       .take(limit);
@@ -430,7 +437,7 @@ export class MessageService {
   ): Promise<Message> {
     const session = await this.sessionService.findOne(sessionId);
     const message = this.messageRepository.create({
-      sessionId,
+      sessionId: session.id,
       waMessageId: data.waMessageId,
       chatId: data.chatId,
       from: session?.phone || 'me',

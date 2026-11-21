@@ -300,6 +300,24 @@ Please read our [Development Guidelines](./docs/08-development-guidelines.md) fo
 
 ## 📝 Changelog
 
+### [2026-11-21]
+
+- **Dukungan Session Identifier Fleksibel (UUID & Session Name)**:
+  - Endpoint session dan pengiriman pesan (`/api/sessions/:sessionId/*`) kini menerima `:sessionId` baik berupa UUID maupun Nama Sesi (e.g. `wa-dspot-pst`).
+  - Normalisasi penyimpanan `sessionId` ke UUID kanonik di database untuk mencegah error `QueryFailedError` pada PostgreSQL saat klien (seperti SIPUTRI 2.0) memanggil via nama sesi.
+- **Endpoint Status Ringan untuk Klien Polling**:
+  - Menambahkan endpoint `GET /api/sessions/:sessionId/status` yang cepat dan ringan untuk mendeteksi status koneksi (`connected`, `disconnected`, `scanning`, dsb.) beserta flag `connected: boolean`.
+  - Mengubah route modul status stories menjadi `/api/sessions/:sessionId/status-stories` untuk menghilangkan bentrok rute HTTP.
+- **Peningkatan Stabilitas Sesi & Reconnection Loop**:
+  - Memperbaiki bug lifecycle engine di mana status session sempat tertimpa kembali menjadi `INITIALIZING` setelah event QR code / Ready diterima.
+  - Menambahkan pembersihan otomatis file lock Chromium (`SingletonLock`, `SingletonCookie`, `SingletonSocket`, `DevToolsActivePort`) sebelum inisialisasi dan saat destroy engine untuk mencegah status `FAILED` akibat lock profile.
+  - Memperkuat reconnection loop dengan timeout aman pada `destroy()` dan backoff capped di 30 detik (hingga 30 percobaan).
+  - Auto-start otomatis pada background startup untuk sesi yang sudah memiliki kredensial tersimpan.
+- **Kemudahan Pairing & Scan QR**:
+  - Auto-start sesi otomatis saat endpoint `GET /api/sessions/:sessionId/qr` dipanggil jika sesi sedang disconnected.
+  - Menampilkan ASCII QR Code langsung di log stdout container Docker untuk memudahkan scan QR langsung via terminal/SSH.
+  - Menambahkan script helper `scripts/pair-session.sh` untuk pengecekan status dan pairing cepat.
+
 ### [2026-10-16]
 
 - **Merge Update dari origin/adit & origin/main**:

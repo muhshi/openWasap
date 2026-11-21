@@ -2,7 +2,8 @@ import { Controller, Get, Post, Delete, Param, Body, HttpCode, HttpStatus } from
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { SessionService } from './session.service';
 import { CreateSessionDto, SessionResponseDto, QRCodeResponseDto } from './dto';
-import { Session } from './entities/session.entity';
+import { Session, SessionStatus } from './entities/session.entity';
+import { EngineStatus } from '../../engine/interfaces/whatsapp-engine.interface';
 import { AuditService } from '../audit/audit.service';
 import { AuditAction } from '../audit/entities/audit-log.entity';
 import { RequireRole, CurrentApiKey } from '../auth/decorators/auth.decorators';
@@ -172,6 +173,45 @@ export class SessionController {
       sessionId: id,
     });
     return qrCode;
+  }
+
+  @Get(':id/status')
+  @ApiOperation({ summary: 'Get lightweight session connection status for client polling' })
+  @ApiParam({ name: 'id', description: 'Session ID (UUID) or Session Name' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lightweight session connection status',
+  })
+  async getStatus(
+    @Param('id') id: string,
+    @CurrentApiKey() apiKey: ApiKey,
+  ) {
+    const session = await this.sessionService.findOne(id, apiKey);
+    const engine = this.sessionService.getEngine(session.id);
+    const engineStatus = engine ? engine.getStatus() : null;
+
+    let connectionStatus = 'disconnected';
+    if (session.status === SessionStatus.READY || engineStatus === EngineStatus.READY) {
+      connectionStatus = 'connected';
+    } else if (session.status === SessionStatus.QR_READY || engineStatus === EngineStatus.QR_READY) {
+      connectionStatus = 'scanning';
+    } else if (session.status === SessionStatus.AUTHENTICATING || engineStatus === EngineStatus.AUTHENTICATING) {
+      connectionStatus = 'authenticating';
+    } else if (session.status === SessionStatus.INITIALIZING || engineStatus === EngineStatus.INITIALIZING) {
+      connectionStatus = 'initializing';
+    } else if (session.status === SessionStatus.FAILED || engineStatus === EngineStatus.FAILED) {
+      connectionStatus = 'failed';
+    }
+
+    return {
+      status: connectionStatus,
+      rawStatus: session.status,
+      sessionId: session.id,
+      name: session.name,
+      phone: session.phone,
+      pushName: session.pushName,
+      connected: connectionStatus === 'connected',
+    };
   }
 
   @Get(':id/groups')

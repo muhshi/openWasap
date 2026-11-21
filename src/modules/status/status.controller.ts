@@ -4,9 +4,9 @@ import { StatusService } from './status.service';
 import { SendTextStatusDto } from './dto/send-text-status.dto';
 import { SendImageStatusDto, SendVideoStatusDto } from './dto/send-media-status.dto';
 
-@ApiTags('Status')
+@ApiTags('Status Stories')
 @ApiBearerAuth()
-@Controller('sessions/:sessionId/status')
+@Controller('sessions/:sessionId/status-stories')
 export class StatusController {
   constructor(private readonly statusService: StatusService) {}
 

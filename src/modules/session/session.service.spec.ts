@@ -356,14 +356,15 @@ describe('SessionService', () => {
       expect(service.isActive('nonexistent')).toBe(false);
     });
 
-    it('should return true for active session', async () => {
+    it('should return true for active session by id and name', async () => {
       const session = createMockSession();
       (repository.findOne as jest.Mock).mockResolvedValue(session);
       (repository.update as jest.Mock).mockResolvedValue({ affected: 1 });
 
-      await service.start('sess-uuid-1');
+      await service.start(session.id);
 
-      expect(service.isActive('sess-uuid-1')).toBe(true);
+      expect(service.isActive(session.id)).toBe(true);
+      expect(service.isActive(session.name)).toBe(true);
     });
   });
 

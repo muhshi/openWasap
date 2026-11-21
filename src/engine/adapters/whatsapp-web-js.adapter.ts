@@ -2,6 +2,7 @@ import { EventEmitter } from 'events';
 import { Client, LocalAuth, MessageMedia } from 'whatsapp-web.js';
 import * as qrcode from 'qrcode';
 import * as path from 'path';
+import * as fs from 'fs';
 import {
   IWhatsAppEngine,
   EngineStatus,
@@ -66,12 +67,36 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
 
   private readonly logger = createLogger('WhatsAppWebJsAdapter');
 
+  private cleanStaleLocks(sessionPath: string): void {
+    try {
+      if (!fs.existsSync(sessionPath)) return;
+      const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket', 'DevToolsActivePort'];
+      for (const file of lockFiles) {
+        const filePath = path.join(sessionPath, file);
+        try {
+          if (fs.existsSync(filePath) || fs.lstatSync(filePath).isSymbolicLink()) {
+            fs.unlinkSync(filePath);
+            this.logger.log(`[Adapter] Cleared stale lock file: ${file} for session ${this.config.sessionId}`);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    } catch (err) {
+      this.logger.debug(`[Adapter] Error checking stale locks: ${String(err)}`);
+    }
+  }
+
   async initialize(callbacks: EngineEventCallbacks): Promise<void> {
     this.callbacks = callbacks;
     this.initTimestamp = Math.floor(Date.now() / 1000);
     this.setStatus(EngineStatus.INITIALIZING);
 
     try {
+      // Clean up any stale Chromium lock files before launching
+      const sessionDir = path.resolve(this.config.sessionDataPath, `session-${this.config.sessionId}`);
+      this.cleanStaleLocks(sessionDir);
+
       // Build puppeteer args, including proxy if configured
       const puppeteerArgs = this.config.puppeteer?.args || [
         '--no-sandbox',
@@ -283,6 +308,13 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         this.qrCode = await qrcode.toDataURL(qr);
         this.setStatus(EngineStatus.QR_READY);
         this.callbacks.onQRCode?.(this.qrCode);
+
+        // Also render ASCII QR to terminal stdout for quick pairing via SSH/docker logs
+        qrcode.toString(qr, { type: 'terminal', small: true }, (err, terminalQr) => {
+          if (!err && terminalQr) {
+            console.log(`\n================== [SCAN QR CODE: ${this.config.sessionId}] ==================\n${terminalQr}\n==================================================================\n`);
+          }
+        });
       } catch (error) {
         this.logger.error('Error generating QR code', String(error));
       }
@@ -384,6 +416,22 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       this.setStatus(EngineStatus.FAILED);
       this.callbacks.onDisconnected?.('Authentication failed');
     });
+
+    // Detect unexpected Chromium browser disconnections / process terminations
+    try {
+      const pupBrowser = (this.client as any).pupBrowser;
+      if (pupBrowser && typeof pupBrowser.on === 'function') {
+        pupBrowser.on('disconnected', () => {
+          this.logger.warn(`[Adapter] Chromium browser disconnected unexpectedly for session: ${this.config.sessionId}`);
+          if (this.status !== EngineStatus.DISCONNECTED) {
+            this.setStatus(EngineStatus.DISCONNECTED);
+            this.callbacks.onDisconnected?.('Browser process disconnected');
+          }
+        });
+      }
+    } catch {
+      // ignore
+    }
   }
 
   private setStatus(status: EngineStatus): void {
@@ -396,21 +444,28 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
   }
 
   async disconnect(): Promise<void> {
+    this.stopAuthWatchdog();
     if (this.client) {
       try {
         // Use destroy instead of logout to preserve session data
         // This allows reconnecting without needing to scan QR again
-        await this.client.destroy();
+        await Promise.race([
+          this.client.destroy(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Destroy timed out')), 5000)),
+        ]);
       } catch (error) {
-        this.logger.warn('Destroy client failed:', String(error));
+        this.logger.warn('Destroy client warning:', String(error));
         // Already destroyed or not initialized - ignore
       }
       this.client = null;
       this.setStatus(EngineStatus.DISCONNECTED);
     }
+    const sessionDir = path.resolve(this.config.sessionDataPath, `session-${this.config.sessionId}`);
+    this.cleanStaleLocks(sessionDir);
   }
 
   async logout(): Promise<void> {
+    this.stopAuthWatchdog();
     if (this.client) {
       try {
         // Logout clears session data - user will need to scan QR again
@@ -419,7 +474,10 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
         this.logger.warn('Logout failed:', String(error));
         // Fall back to destroy if logout fails
         try {
-          await this.client.destroy();
+          await Promise.race([
+            this.client.destroy(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Destroy timed out')), 5000)),
+          ]);
         } catch (destroyError) {
           this.logger.warn('Client destroy also failed during logout fallback', String(destroyError));
         }
@@ -427,14 +485,26 @@ export class WhatsAppWebJsAdapter extends EventEmitter implements IWhatsAppEngin
       this.client = null;
       this.setStatus(EngineStatus.DISCONNECTED);
     }
+    const sessionDir = path.resolve(this.config.sessionDataPath, `session-${this.config.sessionId}`);
+    this.cleanStaleLocks(sessionDir);
   }
 
   async destroy(): Promise<void> {
+    this.stopAuthWatchdog();
     if (this.client) {
-      await this.client.destroy();
+      try {
+        await Promise.race([
+          this.client.destroy(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Destroy timed out')), 5000)),
+        ]);
+      } catch (error) {
+        this.logger.warn('Client destroy warning:', String(error));
+      }
       this.client = null;
       this.setStatus(EngineStatus.DISCONNECTED);
     }
+    const sessionDir = path.resolve(this.config.sessionDataPath, `session-${this.config.sessionId}`);
+    this.cleanStaleLocks(sessionDir);
   }
 
   getStatus(): EngineStatus {
