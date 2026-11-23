@@ -77,9 +77,20 @@ export class AuthValidateController {
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Clear the SSO session cookie' })
-  logout(@Res() res: Response) {
-    res.clearCookie(SSO_SESSION_COOKIE, { path: '/' });
-    res.clearCookie('openwa_sso_state', { path: '/' });
+  logout(@Req() req: Request, @Res() res: Response) {
+    // Match the attributes used when the cookies were created, otherwise some
+    // browsers refuse to overwrite/remove them.
+    const options = {
+      path: '/',
+      httpOnly: true,
+      sameSite: 'lax' as const,
+      secure:
+        process.env.DASHBOARD_URL?.startsWith('https://') ||
+        (req.headers['x-forwarded-proto'] as string) === 'https',
+    };
+
+    res.clearCookie(SSO_SESSION_COOKIE, options);
+    res.clearCookie('openwa_sso_state', options);
     return res.json({ ok: true });
   }
 }

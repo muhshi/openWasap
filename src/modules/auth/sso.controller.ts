@@ -51,9 +51,28 @@ export class SsoController {
     if (!header) return undefined;
     for (const part of header.split(';')) {
       const [key, ...rest] = part.trim().split('=');
-      if (key === name) return rest.join('=');
+      if (key === name) {
+        // Express URL-encodes cookie values (e.g. ':' becomes '%3A'), so the
+        // browser sends them back encoded. Decode before comparing.
+        const raw = rest.join('=');
+        try {
+          return decodeURIComponent(raw);
+        } catch {
+          return raw;
+        }
+      }
     }
     return undefined;
+  }
+
+  private cookieOptions(req: Request, maxAge?: number) {
+    return {
+      httpOnly: true,
+      sameSite: 'lax' as const,
+      secure: this.isSecureRequest(req),
+      path: '/',
+      ...(maxAge ? { maxAge } : {}),
+    };
   }
 
   @Public()
@@ -80,14 +99,7 @@ export class SsoController {
     // OAuth state: protects against CSRF and stops stale/double callbacks
     // from re-triggering login (which used to rotate the dashboard API key).
     const state = randomBytes(24).toString('hex');
-    const secure = this.isSecureRequest(req);
-    res.cookie(SSO_STATE_COOKIE, `${state}:${Date.now()}`, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure,
-      maxAge: STATE_TTL_MS,
-      path: '/',
-    });
+    res.cookie(SSO_STATE_COOKIE, `${state}:${Date.now()}`, this.cookieOptions(req, STATE_TTL_MS));
 
     // `state` is sent back by SIPETRA and stored in the HttpOnly cookie above.
     const queryParams = new URLSearchParams({
@@ -132,13 +144,19 @@ export class SsoController {
       timingSafeEqual(stateBuffer, expectedBuffer);
 
     if (!stateMatches || !Number.isFinite(issuedAtMs) || Date.now() - issuedAtMs > STATE_TTL_MS) {
-      this.logger.warn('SSO callback rejected: invalid or expired state');
+      this.logger.warn('SSO callback rejected: invalid or expired state', {
+        statePresent: stateBuffer.length > 0,
+        cookiePresent: expectedBuffer.length > 0,
+        stateLength: stateBuffer.length,
+        cookieStateLength: expectedBuffer.length,
+        expired: !Number.isFinite(issuedAtMs) || Date.now() - issuedAtMs > STATE_TTL_MS,
+      });
       return res.redirect(
         `${dashboardUrl}/login?error=${encodeURIComponent('Sesi login SSO tidak valid atau sudah kedaluwarsa. Silakan coba lagi.')}`,
       );
     }
     // Consume the state so a double callback cannot be replayed.
-    res.clearCookie(SSO_STATE_COOKIE, { path: '/' });
+    res.clearCookie(SSO_STATE_COOKIE, this.cookieOptions(req));
 
     const baseUrl = process.env.SIPETRA_BASE_URL || 'https://bpsdemak.com';
     const clientId = process.env.SIPETRA_CLIENT_ID;
@@ -195,13 +213,11 @@ export class SsoController {
         return res.redirect(`${dashboardUrl}/`);
       }
 
-      res.cookie(SSO_SESSION_COOKIE, keyToReturn, {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: this.isSecureRequest(req),
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        path: '/',
-      });
+      res.cookie(
+        SSO_SESSION_COOKIE,
+        keyToReturn,
+        this.cookieOptions(req, 30 * 24 * 60 * 60 * 1000),
+      );
 
       // The key is delivered via the HttpOnly cookie above. Redirect without
       // putting it in the URL (browser history / logs / referrer headers).
