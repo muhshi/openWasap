@@ -20,6 +20,7 @@ function createMockSession(overrides: Partial<Session> = {}): Session {
     pushName: null,
     config: {},
     proxyUrl: null,
+    isAiEnabled: false,
     proxyType: null,
     connectedAt: null,
     lastActiveAt: null,

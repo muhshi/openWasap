@@ -10,6 +10,7 @@ import {
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, In, DataSource } from 'typeorm';
 import { Session, SessionStatus } from './entities/session.entity';
+import { assertDeletableStatuses, INACTIVE_SESSION_STATUSES } from './session-status.util';
 import { ApiKey, ApiKeyRole } from '../auth/entities/api-key.entity';
 import { CreateSessionDto } from './dto';
 import { EngineFactory } from '../../engine/engine.factory';
@@ -637,5 +638,42 @@ export class SessionService implements OnModuleDestroy, OnModuleInit {
     if (this.engines.has(idOrName)) return true;
     const canonicalId = this.sessionNameToId.get(idOrName);
     return canonicalId ? this.engines.has(canonicalId) : false;
+  }
+
+  /**
+   * Admin-only adoption: move ownership of an existing session to the current
+   * admin key. This preserves the session's WA credentials/QR state.
+   */
+  async adopt(idOrName: string, apiKey: ApiKey): Promise<Session> {
+    const session = await this.findOne(idOrName);
+    session.ownerApiKeyId = apiKey.id;
+    return this.sessionRepository.save(session);
+  }
+
+  /**
+   * Admin-only bulk cleanup. Only inactive statuses are allowed; active
+   * sessions (ready/qr/authenticating/initializing) are rejected up front.
+   */
+  async deleteInactive(
+    statuses: SessionStatus[],
+  ): Promise<{ deleted: number; deletedIds: string[]; statuses: SessionStatus[] }> {
+    assertDeletableStatuses(statuses);
+
+    const sessions = await this.sessionRepository.find({
+      where: { status: In(statuses) },
+      order: { createdAt: 'ASC' },
+    });
+
+    const deletedIds: string[] = [];
+    for (const session of sessions) {
+      // Double guard: never delete an active engine or an active status.
+      if (this.isActive(session.id) || !INACTIVE_SESSION_STATUSES.has(session.status)) {
+        continue;
+      }
+      await this.delete(session.id);
+      deletedIds.push(session.id);
+    }
+
+    return { deleted: deletedIds.length, deletedIds, statuses };
   }
 }

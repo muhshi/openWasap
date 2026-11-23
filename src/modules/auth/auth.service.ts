@@ -1,12 +1,13 @@
 import { Injectable, NotFoundException, UnauthorizedException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, createHmac, randomBytes } from 'crypto';
 import { existsSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { ApiKey, ApiKeyRole } from './entities/api-key.entity';
 import { User } from './entities/user.entity';
 import { CreateApiKeyDto, UpdateApiKeyDto } from './dto';
+import { isAdminNip } from './admin-nip.util';
 import { createLogger } from '../../common/services/logger.service';
 
 const API_KEY_FILE = join(process.cwd(), 'data', '.api-key');
@@ -288,7 +289,51 @@ export class AuthService implements OnModuleInit {
     return roleHierarchy[apiKey.role] >= roleHierarchy[requiredRole];
   }
 
+  /**
+   * Keep the key's role in sync with the current SSO_ADMIN_NIPS allowlist.
+   * Called when restoring a cookie session so a freshly promoted NIP becomes
+   * admin without requiring a new OAuth round-trip.
+   */
+  async syncApiKeyRole(apiKey: ApiKey): Promise<ApiKey> {
+    if (!apiKey?.userId) return apiKey;
+
+    const user = await this.userRepository.findOne({ where: { id: apiKey.userId } });
+    if (!user) return apiKey;
+
+    const role = isAdminNip(user.nip) ? ApiKeyRole.ADMIN : ApiKeyRole.USER;
+    if (apiKey.role !== role) {
+      apiKey.role = role;
+      await this.apiKeyRepository.save(apiKey);
+    }
+    return apiKey;
+  }
+
+  /**
+   * Derive the per-user SSO credential deterministically from a server secret.
+   *
+   * Recomputing the same key on every login is what keeps the dashboard
+   * session stable: re-authenticating must never invalidate an existing
+   * cookie. A random key per callback meant every refresh/re-login silently
+   * logged the browser out after a few minutes.
+   *
+   * Setting SSO_KEY_SECRET in production decouples SSO keys from the other
+   * secrets; the fallbacks keep zero-config installs working.
+   */
+  private deriveSsoKey(userId: string): string {
+    const secret =
+      process.env.SSO_KEY_SECRET ||
+      process.env.API_MASTER_KEY ||
+      process.env.SIPETRA_CLIENT_SECRET ||
+      'openwa-sso-dev-secret';
+
+    return `owa_k1_${createHmac('sha256', secret).update(`sso:${userId}`).digest('hex')}`;
+  }
+
   async syncSsoUser(profile: any, tokens: any): Promise<ApiKey> {
+    // Promote configured NIPs (SSO_ADMIN_NIPS) to admin so they can manage
+    // every session. Everyone else stays a regular user.
+    const role = isAdminNip(profile.nip) ? ApiKeyRole.ADMIN : ApiKeyRole.USER;
+
     let user = await this.userRepository.findOne({ where: { sipetraId: profile.id } });
     if (!user) {
       user = this.userRepository.create({
@@ -312,7 +357,9 @@ export class AuthService implements OnModuleInit {
     }
 
     let apiKey = await this.apiKeyRepository.findOne({ where: { userId: user.id } });
-    const rawKey = 'owa_k1_' + randomBytes(32).toString('hex');
+
+    // Stable credential: same user + same server secret = same key.
+    const rawKey = this.deriveSsoKey(user.id);
     const keyHash = this.hashKey(rawKey);
     const keyPrefix = rawKey.substring(0, 12);
 
@@ -321,18 +368,25 @@ export class AuthService implements OnModuleInit {
         name: 'SSO Key - ' + user.name,
         keyHash,
         keyPrefix,
-        role: ApiKeyRole.USER,
+        role,
         userId: user.id,
+        isActive: true,
       });
+      await this.apiKeyRepository.save(apiKey);
     } else {
+      // Reuse the stable credential. Users whose key predates deterministic
+      // derivation are migrated once on their next login.
       apiKey.name = 'SSO Key - ' + user.name;
       apiKey.keyHash = keyHash;
       apiKey.keyPrefix = keyPrefix;
+      apiKey.role = role;
       apiKey.isActive = true;
+      await this.apiKeyRepository.save(apiKey);
     }
-    await this.apiKeyRepository.save(apiKey);
-    (apiKey as any).rawKey = rawKey;
 
+    // Always return the key so the callback can (re)issue the HttpOnly cookie,
+    // including for users that already existed before this change.
+    (apiKey as any).rawKey = rawKey;
     return apiKey;
   }
 }

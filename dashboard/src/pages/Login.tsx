@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { Eye, EyeOff } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { GithubIcon } from '../components/GithubIcon';
 import './Login.css';
 
@@ -8,86 +8,65 @@ interface LoginProps {
   onLogin: (apiKey: string) => void;
 }
 
+type SessionResult = {
+  valid: boolean;
+  apiKey?: string;
+};
+
+/**
+ * Login is SSO-only. The page briefly exchanges the HttpOnly SSO cookie for
+ * the dashboard credential; if there is no session yet, the browser is sent
+ * straight to SIPETRA. The manual API key form is intentionally gone.
+ */
 export function Login({ onLogin }: LoginProps) {
   const { t } = useTranslation();
-  const [apiKey, setApiKey] = useState('');
-  const [showKey, setShowKey] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for sso_key or error in URL params
+    let active = true;
     const params = new URLSearchParams(window.location.search);
-    const ssoKey = params.get('sso_key');
     const urlError = params.get('error');
-    
+    const ssoFlag = params.get('sso');
+
+    // Always clean the URL so nothing sensitive (or stale) stays in history.
+    if (urlError || ssoFlag) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
     if (urlError) {
       setError(decodeURIComponent(urlError));
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (ssoKey) {
-      setApiKey(ssoKey);
-      handleSsoLogin(ssoKey);
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
-
-  const handleSsoLogin = async (keyToUse: string) => {
-    setIsLoading(true);
-    setError('');
-    try {
-      const response = await fetch('/api/auth/validate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': keyToUse,
-        },
-      });
-
-      if (response.ok) {
-        onLogin(keyToUse);
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || t('login.invalidKey'));
-      }
-    } catch {
-      setError(t('login.connectionError'));
-    } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!apiKey.trim()) {
-      setError(t('login.apiKeyRequired'));
       return;
     }
-    setIsLoading(true);
-    setError('');
 
-    try {
-      const response = await fetch('/api/auth/validate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': apiKey,
-        },
+    const startSso = () => {
+      if (!active) return;
+      window.location.href = '/auth/sipetra/redirect';
+    };
+
+    fetch('/api/auth/session', { credentials: 'same-origin' })
+      .then(res => (res.ok ? res.json() : null))
+      .then(async (session: SessionResult | null) => {
+        if (!active) return;
+        if (session?.valid && session.apiKey) {
+          onLogin(session.apiKey);
+          setIsLoading(false);
+          return;
+        }
+
+        // No active SSO session: go straight to SIPETRA.
+        startSso();
+      })
+      .catch(() => {
+        if (active) startSso();
       });
 
-      if (response.ok) {
-        onLogin(apiKey);
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || t('login.invalidKey'));
-      }
-    } catch {
-      setError(t('login.connectionError'));
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="login-container">
@@ -101,60 +80,40 @@ export function Login({ onLogin }: LoginProps) {
             })}
           </span>
         </div>
-        <form onSubmit={handleSubmit} className="login-form">
-          <div className="input-group">
-            <label htmlFor="apiKey">{t('login.apiKey')}</label>
-            <div className="input-wrapper">
-              <input
-                id="apiKey"
-                type={showKey ? 'text' : 'password'}
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                placeholder={t('login.apiKeyPlaceholder')}
-                className={error ? 'error' : ''}
+
+        {error && <div className="error-message">{error}</div>}
+
+        {isLoading ? (
+          <div className="sso-loading">
+            <Loader2 className="animate-spin" size={24} />
+            <span>{t('login.ssoRedirecting')}</span>
+          </div>
+        ) : (
+          <a href="/auth/sipetra/redirect" className="sso-button sso-button-primary" id="sso-sipetra-btn">
+            <div className="sso-logo-box">
+              <img
+                src="/logo_bps.png"
+                alt="Logo BPS Demak"
+                className="sso-logo"
+                loading="lazy"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.dataset.fallback) {
+                    target.dataset.fallback = 'true';
+                    target.src = '/logo_sipetra.png';
+                  }
+                }}
               />
-              <button type="button" className="toggle-visibility" onClick={() => setShowKey(!showKey)}>
-                {showKey ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
             </div>
-            {error && <span className="error-message">{error}</span>}
-          </div>
-
-          <button type="submit" className="connect-btn" disabled={isLoading}>
-            {isLoading ? t('login.connecting') : t('login.connect')}
-          </button>
-        </form>
-
-        <div className="sso-divider">
-          <div className="sso-divider-line"></div>
-          <span className="sso-divider-text">{t('login.or')}</span>
-          <div className="sso-divider-line"></div>
-        </div>
-
-        <a href="/auth/sipetra/redirect" className="sso-button" id="sso-sipetra-btn">
-          <div className="sso-logo-box">
-            <img
-              src="/logo_bps.png"
-              alt="Logo BPS Demak"
-              className="sso-logo"
-              loading="lazy"
-              onError={(e) => {
-                const target = e.currentTarget;
-                if (!target.dataset.fallback) {
-                  target.dataset.fallback = 'true';
-                  target.src = '/logo_sipetra.png';
-                }
-              }}
-            />
-          </div>
-          <div className="sso-label-box">
-            <span className="sso-label-title">{t('login.ssoSipetra')}</span>
-            <span className="sso-label-subtitle">{t('login.ssoSubtitle')}</span>
-          </div>
-          <svg className="sso-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7"/>
-          </svg>
-        </a>
+            <div className="sso-label-box">
+              <span className="sso-label-title">{t('login.ssoSipetra')}</span>
+              <span className="sso-label-subtitle">{t('login.ssoSubtitle')}</span>
+            </div>
+            <svg className="sso-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7"/>
+            </svg>
+          </a>
+        )}
 
         <p className="login-help">
           {t('login.help')}{' '}

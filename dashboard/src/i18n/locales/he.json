@@ -119,6 +119,7 @@
     "title": "Sessions",
     "subtitle": "ניהול Sessions של WhatsApp והתחברות באמצעות QR",
     "newSession": "Session חדש",
+    "adminBadge": "מנהל — יכול לנהל את כל ה-Sessions",
     "searchPlaceholder": "חיפוש Sessions...",
     "filter": {
       "all": "כל הסטטוסים",
@@ -152,6 +153,24 @@
       "successDescGeneric": "ה-Session נמחק",
       "errorTitle": "המחיקה נכשלה",
       "errorDefault": "מחיקת ה-Session נכשלה"
+    },
+    "adopt": {
+      "action": "השתלטות",
+      "successTitle": "ה-Session נלקח",
+      "successDesc": "כעת אתה הבעלים של \"{{name}}\"",
+      "errorTitle": "ההשתלטות נכשלה",
+      "errorDefault": "לא ניתן להשתלט על ה-Session"
+    },
+    "cleanup": {
+      "action": "ניקוי לא פעילים",
+      "title": "מחיקת Sessions לא פעילים",
+      "message": "פעולה זו תמחק לצמיתות <strong>{{count}}</strong> Sessions לא פעילים (created, idle, disconnected, failed). Sessions מחוברים לא ייפגעו.",
+      "warning": "לא ניתן לבטל פעולה זו. פרטי ה-WhatsApp של ה-Sessions הנמחקים יוסרו.",
+      "successTitle": "הניקוי הושלם",
+      "successDesc": "{{count}} Sessions לא פעילים נמחקו",
+      "empty": "אין Sessions לא פעילים למחיקה.",
+      "errorTitle": "הניקוי נכשל",
+      "errorDefault": "לא ניתן למחוק Sessions לא פעילים"
     },
     "qr": {
       "title": "סריקת QR",
@@ -518,6 +537,7 @@
     "connectionError": "שגיאת חיבור. אנא בדוק את הרשת או השרת.",
     "apiKeyRequired": "נדרש מפתח API",
     "or": "או",
+    "ssoRedirecting": "מפנה ל-SIPETRA SSO...",
     "ssoSipetra": "התחבר באמצעות SIPETRA SSO",
     "ssoSubtitle": "Single Sign-On BPS Kabupaten Demak",
     "help": "זקוק לעזרה?",

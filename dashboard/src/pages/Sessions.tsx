@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { Plus, QrCode, RefreshCw, Trash2, Eye, Loader2, Play, Square, X, Search, Filter } from 'lucide-react';
+import { Plus, QrCode, RefreshCw, Trash2, Eye, Loader2, Play, Square, X, Search, Filter, ShieldCheck, UserCheck } from 'lucide-react';
 import { sessionApi, type Session } from '../services/api';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useToast } from '../components/Toast';
@@ -13,7 +13,7 @@ export function Sessions() {
   const { t } = useTranslation();
   useDocumentTitle(t('sessions.title'));
   const toast = useToast();
-  const { canWrite } = useRole();
+  const { canWrite, isAdmin, apiKeyId } = useRole();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +33,10 @@ export function Sessions() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showCleanupModal, setShowCleanupModal] = useState(false);
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const inactiveStatuses = ['created', 'idle', 'disconnected', 'failed'];
+  const inactiveCount = sessions.filter(s => inactiveStatuses.includes(s.status)).length;
 
   const qrDataRef = useRef(qrData);
   qrDataRef.current = qrData;
@@ -260,6 +264,36 @@ export function Sessions() {
     }
   };
 
+  const handleAdopt = async (id: string) => {
+    const session = sessions.find(s => s.id === id);
+    try {
+      const updated = await sessionApi.adopt(id);
+      setSessions(prev => prev.map(s => (s.id === id ? { ...s, ownerApiKeyId: updated.ownerApiKeyId } : s)));
+      toast.success(
+        t('sessions.adopt.successTitle'),
+        t('sessions.adopt.successDesc', { name: session?.name ?? '' }),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t('sessions.adopt.errorDefault');
+      toast.error(t('sessions.adopt.errorTitle'), msg);
+    }
+  };
+
+  const handleCleanup = async () => {
+    try {
+      setCleaningUp(true);
+      const result = await sessionApi.deleteInactive(inactiveStatuses);
+      await fetchSessions();
+      toast.success(t('sessions.cleanup.successTitle'), t('sessions.cleanup.successDesc', { count: result.deleted }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t('sessions.cleanup.errorDefault');
+      toast.error(t('sessions.cleanup.errorTitle'), msg);
+    } finally {
+      setCleaningUp(false);
+      setShowCleanupModal(false);
+    }
+  };
+
   const handleStart = async (id: string) => {
     const session = sessions.find(s => s.id === id);
     const sessionName = session?.name || '';
@@ -319,7 +353,7 @@ export function Sessions() {
     const matchesStatus =
       statusFilter === 'all' ||
       (statusFilter === 'active' && s.status === 'ready') ||
-      (statusFilter === 'inactive' && ['created', 'idle', 'disconnected'].includes(s.status)) ||
+      (statusFilter === 'inactive' && inactiveStatuses.includes(s.status)) ||
       (statusFilter === 'connecting' && ['initializing', 'connecting', 'qr_ready', 'authenticating'].includes(s.status));
     return matchesSearch && matchesStatus;
   });
@@ -341,12 +375,25 @@ export function Sessions() {
         title={t('sessions.title')}
         subtitle={t('sessions.subtitle')}
         actions={
-          canWrite && (
-            <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
-              <Plus size={18} />
-              {t('sessions.newSession')}
-            </button>
-          )
+          <>
+            {isAdmin && (
+              <button
+                className="btn-secondary"
+                onClick={() => setShowCleanupModal(true)}
+                disabled={inactiveCount === 0}
+                title={inactiveCount === 0 ? t('sessions.cleanup.empty') : undefined}
+              >
+                <Trash2 size={18} />
+                {t('sessions.cleanup.action')}
+              </button>
+            )}
+            {canWrite && (
+              <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+                <Plus size={18} />
+                {t('sessions.newSession')}
+              </button>
+            )}
+          </>
         }
       />
 
@@ -370,6 +417,13 @@ export function Sessions() {
             <option value="connecting">{t('sessions.filter.connecting')}</option>
           </select>
         </div>
+
+        {isAdmin && (
+          <span className="admin-badge">
+            <ShieldCheck size={15} />
+            {t('sessions.adminBadge')}
+          </span>
+        )}
       </div>
 
       {error && (
@@ -575,6 +629,33 @@ export function Sessions() {
         </div>
       )}
 
+      {showCleanupModal && (
+        <div className="modal-overlay" onClick={() => setShowCleanupModal(false)}>
+          <div className="modal confirm-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{t('sessions.cleanup.title')}</h2>
+              <button className="btn-icon" onClick={() => setShowCleanupModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <p>
+                <Trans i18nKey="sessions.cleanup.message" values={{ count: inactiveCount }} components={{ strong: <strong /> }} />
+              </p>
+              <p className="text-muted">{t('sessions.cleanup.warning')}</p>
+            </div>
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowCleanupModal(false)} disabled={cleaningUp}>
+                {t('common.cancel')}
+              </button>
+              <button className="btn-danger" onClick={handleCleanup} disabled={cleaningUp || inactiveCount === 0}>
+                {cleaningUp ? <Loader2 className="animate-spin" size={16} /> : t('common.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteConfirmId && (
         <div className="modal-overlay" onClick={() => setDeleteConfirmId(null)}>
           <div className="modal confirm-modal" onClick={e => e.stopPropagation()}>
@@ -688,6 +769,12 @@ export function Sessions() {
                     {t('sessions.actions.reconnect')}
                   </button>
                 ) : null}
+                {isAdmin && session.ownerApiKeyId !== apiKeyId && (
+                  <button className="btn-action" onClick={() => handleAdopt(session.id)}>
+                    <UserCheck size={16} />
+                    {t('sessions.adopt.action')}
+                  </button>
+                )}
                 {canWrite && (
                   <button className="btn-action danger" onClick={() => setDeleteConfirmId(session.id)}>
                     <Trash2 size={16} />

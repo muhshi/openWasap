@@ -1,8 +1,18 @@
 import { Controller, Get, Query, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { randomBytes, timingSafeEqual } from 'crypto';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/auth.decorators';
 import { createLogger } from '../../common/services/logger.service';
+
+/**
+ * Cookie used to keep the SSO session. The raw API key is never exposed in
+ * the browser URL/history again: it is set as an HttpOnly cookie on the
+ * callback and can be exchanged for the key via /api/auth/session.
+ */
+export const SSO_SESSION_COOKIE = 'openwa_sso_session';
+const SSO_STATE_COOKIE = 'openwa_sso_state';
+const STATE_TTL_MS = 10 * 60 * 1000;
 
 @Controller('auth/sipetra')
 export class SsoController {
@@ -28,6 +38,24 @@ export class SsoController {
     return `${proto}://${host}`;
   }
 
+  private isSecureRequest(req: Request): boolean {
+    const dashboardUrl = process.env.DASHBOARD_URL;
+    if (dashboardUrl?.startsWith('https://')) return true;
+
+    const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
+    return proto === 'https';
+  }
+
+  private getCookie(req: Request, name: string): string | undefined {
+    const header = req.headers.cookie;
+    if (!header) return undefined;
+    for (const part of header.split(';')) {
+      const [key, ...rest] = part.trim().split('=');
+      if (key === name) return rest.join('=');
+    }
+    return undefined;
+  }
+
   @Public()
   @Get('redirect')
   async redirect(@Req() req: Request, @Res() res: Response) {
@@ -49,11 +77,25 @@ export class SsoController {
       );
     }
 
+    // OAuth state: protects against CSRF and stops stale/double callbacks
+    // from re-triggering login (which used to rotate the dashboard API key).
+    const state = randomBytes(24).toString('hex');
+    const secure = this.isSecureRequest(req);
+    res.cookie(SSO_STATE_COOKIE, `${state}:${Date.now()}`, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure,
+      maxAge: STATE_TTL_MS,
+      path: '/',
+    });
+
+    // `state` is sent back by SIPETRA and stored in the HttpOnly cookie above.
     const queryParams = new URLSearchParams({
       client_id: clientId!,
       redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'identity_pegawai:read employee:read contact:read roles:read',
+      state,
     });
 
     const authUrl = `${baseUrl}/oauth/authorize?${queryParams.toString()}`;
@@ -64,6 +106,7 @@ export class SsoController {
   @Get('callback')
   async callback(
     @Query('code') code: string,
+    @Query('state') state: string,
     @Query('error') error: string,
     @Req() req: Request,
     @Res() res: Response,
@@ -77,6 +120,26 @@ export class SsoController {
       return res.redirect(`${dashboardUrl}/login?error=` + encodeURIComponent('No authorization code provided.'));
     }
 
+    // Validate OAuth state against the HttpOnly cookie set in /redirect.
+    const stateCookie = this.getCookie(req, SSO_STATE_COOKIE);
+    const [expectedState, issuedAt] = (stateCookie || '').split(':');
+    const issuedAtMs = Number(issuedAt);
+    const stateBuffer = Buffer.from(state || '');
+    const expectedBuffer = Buffer.from(expectedState || '');
+    const stateMatches =
+      stateBuffer.length > 0 &&
+      stateBuffer.length === expectedBuffer.length &&
+      timingSafeEqual(stateBuffer, expectedBuffer);
+
+    if (!stateMatches || !Number.isFinite(issuedAtMs) || Date.now() - issuedAtMs > STATE_TTL_MS) {
+      this.logger.warn('SSO callback rejected: invalid or expired state');
+      return res.redirect(
+        `${dashboardUrl}/login?error=${encodeURIComponent('Sesi login SSO tidak valid atau sudah kedaluwarsa. Silakan coba lagi.')}`,
+      );
+    }
+    // Consume the state so a double callback cannot be replayed.
+    res.clearCookie(SSO_STATE_COOKIE, { path: '/' });
+
     const baseUrl = process.env.SIPETRA_BASE_URL || 'https://bpsdemak.com';
     const clientId = process.env.SIPETRA_CLIENT_ID;
     const clientSecret = process.env.SIPETRA_CLIENT_SECRET;
@@ -88,7 +151,6 @@ export class SsoController {
     }
 
     try {
-      // Exchange code for token
       const tokenResponse = await fetch(`${baseUrl}/oauth/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -109,12 +171,11 @@ export class SsoController {
 
       const tokens = await tokenResponse.json();
 
-      // Fetch user profile
       const profileResponse = await fetch(`${baseUrl}/api/user`, {
         method: 'GET',
-        headers: { 
+        headers: {
           'Authorization': `Bearer ${tokens.access_token}`,
-          'Accept': 'application/json' 
+          'Accept': 'application/json',
         },
       });
 
@@ -124,16 +185,27 @@ export class SsoController {
 
       const profile = await profileResponse.json();
 
-      // Sync user and get API key
+      // Sync user and get their stable SSO key (never rotated on re-login).
       const apiKey = await this.authService.syncSsoUser(profile, tokens);
       const keyToReturn = (apiKey as any).rawKey;
 
       if (!keyToReturn) {
-        return res.redirect(`${dashboardUrl}/login?error=KeyGenerationFailed`);
+        // Already-authenticated user: reuse the key already held by the
+        // browser cookie/localStorage. There is nothing new to hand over.
+        return res.redirect(`${dashboardUrl}/`);
       }
 
-      // Redirect to dashboard with the API key
-      return res.redirect(`${dashboardUrl}/login?sso_key=${encodeURIComponent(keyToReturn)}`);
+      res.cookie(SSO_SESSION_COOKIE, keyToReturn, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: this.isSecureRequest(req),
+        maxAge: 30 * 24 * 60 * 60 * 1000,
+        path: '/',
+      });
+
+      // The key is delivered via the HttpOnly cookie above. Redirect without
+      // putting it in the URL (browser history / logs / referrer headers).
+      return res.redirect(`${dashboardUrl}/login?sso=1`);
     } catch (e: any) {
       this.logger.error(`SSO Callback error: ${e.message}`);
       return res.redirect(`${dashboardUrl}/login?error=SSOError`);

@@ -9,6 +9,7 @@ const API_BASE_URL = '/api';
 
 export interface Session {
   id: string;
+  ownerApiKeyId?: string | null;
   name: string;
   status: 'created' | 'idle' | 'initializing' | 'connecting' | 'qr_ready' | 'authenticating' | 'ready' | 'disconnected' | 'failed';
   phone?: string;
@@ -249,6 +250,12 @@ export const sessionApi = {
       body: JSON.stringify({ name }),
     }),
   delete: (id: string) => request<void>(`/sessions/${id}`, { method: 'DELETE' }),
+  adopt: (id: string) => request<Session>(`/sessions/${id}/adopt`, { method: 'POST' }),
+  deleteInactive: (statuses: string[]) =>
+    request<{ deleted: number; deletedIds: string[]; statuses: string[] }>('/sessions/inactive/cleanup', {
+      method: 'POST',
+      body: JSON.stringify({ statuses }),
+    }),
   start: (id: string) => request<Session>(`/sessions/${id}/start`, { method: 'POST' }),
   stop: (id: string) => request<Session>(`/sessions/${id}/stop`, { method: 'POST' }),
   getQR: (id: string) => request<{ qrCode: string; status: string }>(`/sessions/${id}/qr`),

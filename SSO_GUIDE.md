@@ -274,3 +274,16 @@ public function panel(Panel $panel): Panel
 ## Catatan Penting
 - **Scopes**: Pastikan scope yang diminta di `config/services.php` sudah di-assign ke client di panel admin SIPETRA.
 - **HTTPS**: Di lingkungan production, pastikan `APP_URL` menggunakan `https://` agar callback tidak error.
+
+## Admin berdasarkan NIP (OpenWA)
+Tambahkan NIP yang boleh mengelola semua session di `.env` server (pisahkan dengan koma):
+
+```env
+SSO_ADMIN_NIPS=340058069,340058070
+```
+
+- Role disinkronkan otomatis saat login SSO dan saat session dipulihkan dari cookie.
+- API key SSO **diturunkan secara deterministik** dari `SSO_KEY_SECRET` (fallback: `API_MASTER_KEY`, lalu `SIPETRA_CLIENT_SECRET`) + ID user, sehingga tidak pernah berubah antar login. Cookie `openwa_sso_session` (HttpOnly, 30 hari) dipakai untuk memulihkan sesi setelah refresh.
+- Mengubah `SSO_KEY_SECRET` akan merotasi key SSO semua user; mereka cukup login ulang sekali.
+- Admin dapat melihat semua session, mengambil alih session lama (`POST /api/sessions/:id/adopt`), dan menghapus session tidak aktif (`POST /api/sessions/inactive/cleanup`).
+- Session yang sedang `ready`, `qr_ready`, `authenticating`, atau `initializing` tidak akan pernah ikut terhapus oleh pembersihan massal.

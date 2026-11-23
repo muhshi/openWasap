@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Delete, Param, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { SessionService } from './session.service';
-import { CreateSessionDto, SessionResponseDto, QRCodeResponseDto } from './dto';
+import { CleanupInactiveSessionsDto, CreateSessionDto, SessionResponseDto, QRCodeResponseDto } from './dto';
 import { Session, SessionStatus } from './entities/session.entity';
 import { EngineStatus } from '../../engine/interfaces/whatsapp-engine.interface';
 import { AuditService } from '../audit/audit.service';
@@ -21,6 +21,7 @@ export class SessionController {
   private transformSession(session: Session): SessionResponseDto {
     return {
       id: session.id,
+      ownerApiKeyId: session.ownerApiKeyId,
       name: session.name,
       status: session.status,
       phone: session.phone,
@@ -96,9 +97,53 @@ export class SessionController {
     const session = await this.sessionService.findOne(id, apiKey);
     await this.sessionService.delete(id);
     await this.auditService.logInfo(AuditAction.SESSION_DELETED, {
+      apiKey,
       sessionId: id,
       sessionName: session.name,
     });
+  }
+
+  @Post('inactive/cleanup')
+  @RequireRole(ApiKeyRole.ADMIN)
+  @ApiOperation({ summary: 'Delete inactive sessions (admin only)' })
+  @ApiResponse({ status: 200, description: 'Inactive sessions deleted' })
+  async deleteInactive(
+    @Body() body: CleanupInactiveSessionsDto,
+    @CurrentApiKey() apiKey: ApiKey,
+  ): Promise<{ deleted: number; deletedIds: string[]; statuses: SessionStatus[] }> {
+    const statuses = body.statuses?.length
+      ? body.statuses
+      : [SessionStatus.CREATED, SessionStatus.IDLE, SessionStatus.DISCONNECTED, SessionStatus.FAILED];
+
+    const result = await this.sessionService.deleteInactive(statuses);
+    await this.auditService.logInfo(AuditAction.SESSION_BULK_DELETED, {
+      apiKey,
+      metadata: {
+        deleted: result.deleted,
+        statuses: result.statuses,
+        deletedIds: result.deletedIds,
+      },
+    });
+    return result;
+  }
+
+  @Post(':id/adopt')
+  @RequireRole(ApiKeyRole.ADMIN)
+  @ApiOperation({ summary: 'Adopt an existing session (admin only)' })
+  @ApiParam({ name: 'id', description: 'Session ID or name' })
+  @ApiResponse({ status: 200, description: 'Session adopted', type: SessionResponseDto })
+  async adopt(
+    @Param('id') id: string,
+    @CurrentApiKey() apiKey: ApiKey,
+  ): Promise<SessionResponseDto> {
+    const session = await this.sessionService.adopt(id, apiKey);
+    await this.auditService.logInfo(AuditAction.SESSION_ADOPTED, {
+      apiKey,
+      sessionId: session.id,
+      sessionName: session.name,
+      metadata: { newOwnerApiKeyId: apiKey.id },
+    });
+    return this.transformSession(session);
   }
 
   @Post(':id/start')

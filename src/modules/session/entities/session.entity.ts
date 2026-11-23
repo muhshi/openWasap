@@ -4,6 +4,7 @@ import { jsonColumnType, dateColumnType } from '../../../common/utils/column-typ
 
 export enum SessionStatus {
   CREATED = 'created',
+  IDLE = 'idle',
   INITIALIZING = 'initializing',
   QR_READY = 'qr_ready',
   AUTHENTICATING = 'authenticating',

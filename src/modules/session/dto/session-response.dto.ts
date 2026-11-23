@@ -5,6 +5,9 @@ export class SessionResponseDto {
   @ApiProperty({ example: 'sess_123e4567-e89b-12d3-a456-426614174000' })
   id: string;
 
+  @ApiPropertyOptional({ example: 'c6f1f2a3-...' })
+  ownerApiKeyId?: string | null;
+
   @ApiProperty({ example: 'my-bot' })
   name: string;
 

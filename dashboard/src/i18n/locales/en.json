@@ -119,6 +119,7 @@
     "title": "Sessions",
     "subtitle": "Manage your WhatsApp sessions and QR code connections",
     "newSession": "New Session",
+    "adminBadge": "Admin — can manage all sessions",
     "searchPlaceholder": "Search sessions...",
     "filter": {
       "all": "All Status",
@@ -152,6 +153,24 @@
       "successDescGeneric": "Session deleted",
       "errorTitle": "Delete Failed",
       "errorDefault": "Failed to delete session"
+    },
+    "adopt": {
+      "action": "Take over",
+      "successTitle": "Session Adopted",
+      "successDesc": "You now own \"{{name}}\"",
+      "errorTitle": "Adopt Failed",
+      "errorDefault": "Failed to adopt session"
+    },
+    "cleanup": {
+      "action": "Clean Up Inactive",
+      "title": "Delete Inactive Sessions",
+      "message": "This will permanently delete <strong>{{count}}</strong> inactive session(s) (created, idle, disconnected, failed). Connected sessions are never touched.",
+      "warning": "This action cannot be undone. WhatsApp credentials for deleted sessions will be removed.",
+      "successTitle": "Cleanup Complete",
+      "successDesc": "{{count}} inactive session(s) deleted",
+      "empty": "No inactive sessions to delete.",
+      "errorTitle": "Cleanup Failed",
+      "errorDefault": "Failed to delete inactive sessions"
     },
     "qr": {
       "title": "Scan QR Code",
@@ -554,6 +573,7 @@
     "connectionError": "Connection error. Please check your network or server.",
     "apiKeyRequired": "API Key is required",
     "or": "or",
+    "ssoRedirecting": "Mengarahkan ke SIPETRA SSO...",
     "ssoSipetra": "Masuk dengan SIPETRA SSO",
     "ssoSubtitle": "Single Sign-On BPS Kabupaten Demak",
     "help": "Need help?",

@@ -348,4 +348,147 @@ describe('AuthService', () => {
       expect(r2.id).toBe(key.id);
     });
   });
+
+  // ── syncSsoUser (NIP → admin promotion) ───────────────────────────
+
+  describe('syncSsoUser role mapping', () => {
+    const originalAllowList = process.env.SSO_ADMIN_NIPS;
+    const originalKeySecret = process.env.SSO_KEY_SECRET;
+
+    afterEach(() => {
+      if (originalAllowList === undefined) {
+        delete process.env.SSO_ADMIN_NIPS;
+      } else {
+        process.env.SSO_ADMIN_NIPS = originalAllowList;
+      }
+
+      if (originalKeySecret === undefined) {
+        delete process.env.SSO_KEY_SECRET;
+      } else {
+        process.env.SSO_KEY_SECRET = originalKeySecret;
+      }
+    });
+
+    function mockNewUserFlow() {
+      (userRepository.findOne as jest.Mock).mockResolvedValue(null);
+      (userRepository.create as jest.Mock).mockImplementation(user => user);
+      (userRepository.save as jest.Mock).mockImplementation(user =>
+        Promise.resolve({ id: 'user-1', ...user }),
+      );
+      (repository.findOne as jest.Mock).mockResolvedValue(null);
+      (repository.create as jest.Mock).mockImplementation(key => key);
+      (repository.save as jest.Mock).mockImplementation(key => Promise.resolve(key));
+    }
+
+    it('promotes a configured NIP to admin on first SSO login', async () => {
+      process.env.SSO_ADMIN_NIPS = '340058069';
+      mockNewUserFlow();
+
+      await service.syncSsoUser(
+        { id: 'sso-1', name: 'Admin Demak', email: 'admin@example.com', nip: '340058069' },
+        { access_token: 'token', refresh_token: 'refresh' },
+      );
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ role: ApiKeyRole.ADMIN }),
+      );
+    });
+
+    it('keeps a non-listed NIP as a regular user', async () => {
+      process.env.SSO_ADMIN_NIPS = '340058069';
+      mockNewUserFlow();
+
+      await service.syncSsoUser(
+        { id: 'sso-2', name: 'Regular User', email: 'user@example.com', nip: '340000000' },
+        { access_token: 'token', refresh_token: 'refresh' },
+      );
+
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ role: ApiKeyRole.USER }),
+      );
+    });
+
+    it('returns a stable credential on every login (never rotates)', async () => {
+      process.env.SSO_ADMIN_NIPS = '340058069';
+      process.env.SSO_KEY_SECRET = 'test-secret';
+
+      const existingUser = { id: 'user-1', name: 'Admin Demak' } as User;
+      const existingKey = createMockApiKey({
+        id: 'key-1',
+        userId: 'user-1',
+        role: ApiKeyRole.USER,
+        keyHash: hashKey('legacy-random-key'),
+      });
+
+      (userRepository.findOne as jest.Mock).mockResolvedValue(existingUser);
+      (userRepository.save as jest.Mock).mockImplementation(user => Promise.resolve(user));
+      (repository.findOne as jest.Mock).mockResolvedValue(existingKey);
+      (repository.save as jest.Mock).mockImplementation(key => Promise.resolve(key));
+
+      const profile = {
+        id: 'sso-1',
+        name: 'Admin Demak',
+        email: 'admin@example.com',
+        nip: '340058069',
+      };
+      const tokens = { access_token: 'token', refresh_token: 'refresh' };
+
+      const first = await service.syncSsoUser(profile, tokens);
+      const firstHash = first.keyHash;
+      const firstRaw = (first as any).rawKey;
+
+      const second = await service.syncSsoUser(profile, tokens);
+
+      expect(second.role).toBe(ApiKeyRole.ADMIN);
+      expect(second.keyHash).toBe(firstHash);
+      expect((second as any).rawKey).toBe(firstRaw);
+      expect(firstRaw).toMatch(/^owa_k1_[a-f0-9]{64}$/);
+      // A legacy random key is migrated once, then stays stable.
+      expect(firstHash).not.toBe(hashKey('legacy-random-key'));
+    });
+  });
+
+  // ── syncApiKeyRole (cookie session restore) ───────────────────────
+
+  describe('syncApiKeyRole', () => {
+    const originalAllowList = process.env.SSO_ADMIN_NIPS;
+    const originalKeySecret = process.env.SSO_KEY_SECRET;
+
+    afterEach(() => {
+      if (originalAllowList === undefined) {
+        delete process.env.SSO_ADMIN_NIPS;
+      } else {
+        process.env.SSO_ADMIN_NIPS = originalAllowList;
+      }
+
+      if (originalKeySecret === undefined) {
+        delete process.env.SSO_KEY_SECRET;
+      } else {
+        process.env.SSO_KEY_SECRET = originalKeySecret;
+      }
+    });
+
+    it('promotes an existing key when its NIP is allowlisted', async () => {
+      process.env.SSO_ADMIN_NIPS = '340058069';
+
+      const key = createMockApiKey({ userId: 'user-1', role: ApiKeyRole.USER });
+      (userRepository.findOne as jest.Mock).mockResolvedValue({ id: 'user-1', nip: '340058069' } as User);
+      (repository.save as jest.Mock).mockImplementation(k => Promise.resolve(k));
+
+      const result = await service.syncApiKeyRole(key);
+
+      expect(result.role).toBe(ApiKeyRole.ADMIN);
+      expect(repository.save).toHaveBeenCalled();
+    });
+
+    it('leaves keys without a linked user untouched', async () => {
+      process.env.SSO_ADMIN_NIPS = '340058069';
+
+      const masterKey = createMockApiKey({ userId: null, role: ApiKeyRole.ADMIN });
+      const result = await service.syncApiKeyRole(masterKey);
+
+      expect(result.role).toBe(ApiKeyRole.ADMIN);
+      expect(userRepository.findOne).not.toHaveBeenCalled();
+    });
+  });
 });
